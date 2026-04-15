@@ -5,26 +5,25 @@ pub const PROTOC_VERSION = "32.1";
 
 // File system utilities
 pub fn dirExists(path: []const u8) bool {
-    var dir = std.fs.openDirAbsolute(path, .{}) catch return false;
-    dir.close();
+    const path_z = std.posix.toPosixPath(path) catch return false;
+    const fd = std.posix.openat(std.posix.AT.FDCWD, &path_z, .{ .DIRECTORY = true }, 0) catch return false;
+    _ = std.os.linux.close(fd);
     return true;
 }
 
 pub fn fileExists(path: []const u8) bool {
-    var file = std.fs.openFileAbsolute(path, .{}) catch return false;
-    file.close();
+    const path_z = std.posix.toPosixPath(path) catch return false;
+    const fd = std.posix.openat(std.posix.AT.FDCWD, &path_z, .{}, 0) catch return false;
+    _ = std.os.linux.close(fd);
     return true;
 }
 
 // Environment utilities
 pub fn isEnvVarTruthy(allocator: std.mem.Allocator, name: []const u8) bool {
-    if (std.process.getEnvVarOwned(allocator, name)) |truthy| {
-        defer allocator.free(truthy);
-        if (std.mem.eql(u8, truthy, "true")) return true;
-        return false;
-    } else |_| {
-        return false;
-    }
+    _ = allocator;
+    const name_z = std.posix.toPosixPath(name) catch return false;
+    const val = std.c.getenv(&name_z) orelse return false;
+    return std.mem.eql(u8, std.mem.sliceTo(val, 0), "true");
 }
 
 pub fn ensureProtocBinaryDownloaded(
@@ -184,7 +183,12 @@ pub const RunProtocStep = struct {
                     &.{ "--zig_out=", absolute_dest_dir },
                 ));
                 if (!dirExists(absolute_dest_dir)) {
-                    try std.fs.makeDirAbsolute(absolute_dest_dir);
+                    {
+                        const path_z = std.posix.toPosixPath(absolute_dest_dir) catch return error.BadPath;
+                        const rc = std.os.linux.mkdirat(std.posix.AT.FDCWD, &path_z, 0o755);
+                        const err = std.posix.errno(rc);
+                        if (err != .SUCCESS and err != .EXIST) return error.MkdirFailed;
+                    }
                 }
 
                 for (self.include_directories) |it| {
@@ -205,7 +209,7 @@ pub const RunProtocStep = struct {
                     std.debug.print("\n", .{});
                 }
 
-                _ = try step.evalChildProcess(argv.items);
+                _ = try step.evalZigProcess(argv.items, std.Progress.Node.none, false, null, b.allocator);
             }
         }
 
@@ -216,7 +220,7 @@ pub const RunProtocStep = struct {
             try argv.append(b.allocator, "fmt");
             try argv.append(b.allocator, absolute_dest_dir);
 
-            _ = try step.evalChildProcess(argv.items);
+            _ = try step.evalZigProcess(argv.items, std.Progress.Node.none, false, null, b.allocator);
         }
     }
 };
