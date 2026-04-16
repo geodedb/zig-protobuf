@@ -438,10 +438,7 @@ pub fn decodeRepeated(
                 var consumed: usize = 0;
                 while (consumed < bytes) {
                     const raw, const c = try decodeScalar(.int32, reader);
-                    const decoded = @as(Result, @enumFromInt(raw)) catch {
-                        @branchHint(.cold);
-                        return error.InvalidInput;
-                    };
+                    const decoded: Result = @enumFromInt(raw);
                     try result.append(allocator, decoded);
                     consumed += c;
                 }
@@ -454,10 +451,7 @@ pub fn decodeRepeated(
             // Unpacked repeated enum.
             else {
                 const raw, const consumed = try decodeScalar(.int32, reader);
-                const decoded = @as(Result, @enumFromInt(raw)) catch {
-                    @branchHint(.cold);
-                    return error.InvalidInput;
-                };
+                const decoded: Result = @enumFromInt(raw);
                 try result.append(allocator, decoded);
                 return consumed;
             }
@@ -652,15 +646,12 @@ pub fn decodeMessage(
                     consumed += c;
                     const decoded = b: {
                         if (comptime field_ti == .optional) {
-                            break :b @as(
-                                field_ti.optional.child, @enumFromInt(raw,
-                            ));
+                            const val: field_ti.optional.child = @enumFromInt(raw);
+                            break :b val;
                         } else {
-                            break :b @as(Field, @enumFromInt(raw));
+                            const val: Field = @enumFromInt(raw);
+                            break :b val;
                         }
-                    } catch {
-                        @branchHint(.cold);
-                        return error.InvalidInput;
                     };
                     @field(result, field.name) = decoded;
                 },

@@ -9,8 +9,10 @@ const FullName = @import("./FullName.zig").FullName;
 pub const std_options: std.Options = .{ .log_scope_levels = &[_]std.log.ScopeLevel{.{ .level = .warn, .scope = .zig_protobuf }} };
 
 pub fn main() !void {
+    const io = std.Io.Threaded.global_single_threaded.io();
+
     var stdin_buf: [4096]u8 = undefined;
-    var stdin = std.fs.File.stdin().reader(&stdin_buf);
+    var stdin = std.Io.File.stdin().reader(io, &stdin_buf);
 
     const allocator = std.heap.smp_allocator;
 
@@ -24,7 +26,7 @@ pub fn main() !void {
     try ctx.processRequest(allocator);
 
     var stdout_buf: [4096]u8 = undefined;
-    var stdout = std.fs.File.stdout().writer(&stdout_buf);
+    var stdout = std.Io.File.stdout().writer(io, &stdout_buf);
     try ctx.res.encode(&stdout.interface, allocator);
     try stdout.interface.flush();
 }
@@ -236,7 +238,7 @@ const GenerationContext = struct {
         const bPath = packageToFileName(b, &b_path_buf);
 
         // to resolve some escaping oddities, the windows path separator is canonicalized to /
-        const resolvedRelativePath = try std.fs.path.relative(allocator, aPath, bPath);
+        const resolvedRelativePath = try std.fs.path.relative(allocator, ".", null, aPath, bPath);
         return std.mem.replaceOwned(u8, allocator, resolvedRelativePath, "\\", "/");
     }
 
