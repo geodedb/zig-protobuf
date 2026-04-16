@@ -540,7 +540,7 @@ pub fn decodeMessage(
         };
         consumed += tag_c;
 
-        @setEvalBranchQuota(40_000);
+        @setEvalBranchQuota(200_000);
         inline for (@typeInfo(@TypeOf(desc_table)).@"struct".fields) |field| {
             const field_desc: protobuf.FieldDescriptor =
                 comptime @field(desc_table, field.name);
@@ -893,12 +893,7 @@ pub fn decodeMessage(
                                 const raw, const c =
                                     try decodeScalar(.int32, reader);
                                 consumed += c;
-                                const decoded = @as(
-                                    oo_field.type, @enumFromInt(raw,
-                                )) catch {
-                                    @branchHint(.cold);
-                                    return error.InvalidInput;
-                                };
+                                const decoded: oo_field.type = @enumFromInt(raw);
 
                                 // Free potentially existing union field just
                                 // before replacing.

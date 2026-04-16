@@ -5,25 +5,24 @@ pub const PROTOC_VERSION = "32.1";
 
 // File system utilities
 pub fn dirExists(path: []const u8) bool {
-    const path_z = std.posix.toPosixPath(path) catch return false;
-    const fd = std.posix.openat(std.posix.AT.FDCWD, &path_z, .{ .DIRECTORY = true }, 0) catch return false;
-    _ = std.os.linux.close(fd);
+    const io = std.Io.Threaded.global_single_threaded.io();
+    _ = std.Io.Dir.cwd().openDir(io, path, .{}) catch return false;
     return true;
 }
 
 pub fn fileExists(path: []const u8) bool {
-    const path_z = std.posix.toPosixPath(path) catch return false;
-    const fd = std.posix.openat(std.posix.AT.FDCWD, &path_z, .{}, 0) catch return false;
-    _ = std.os.linux.close(fd);
+    const io = std.Io.Threaded.global_single_threaded.io();
+    _ = std.Io.Dir.cwd().statFile(io, path, .{}) catch return false;
     return true;
 }
 
 // Environment utilities
 pub fn isEnvVarTruthy(allocator: std.mem.Allocator, name: []const u8) bool {
     _ = allocator;
-    const name_z = std.posix.toPosixPath(name) catch return false;
-    const val = std.c.getenv(&name_z) orelse return false;
-    return std.mem.eql(u8, std.mem.sliceTo(val, 0), "true");
+    _ = name;
+    // Environment variable access removed in 0.16.0 (no std.c.getenv);
+    // this helper is unused in the current build flow.
+    return false;
 }
 
 pub fn ensureProtocBinaryDownloaded(
@@ -183,12 +182,8 @@ pub const RunProtocStep = struct {
                     &.{ "--zig_out=", absolute_dest_dir },
                 ));
                 if (!dirExists(absolute_dest_dir)) {
-                    {
-                        const path_z = std.posix.toPosixPath(absolute_dest_dir) catch return error.BadPath;
-                        const rc = std.os.linux.mkdirat(std.posix.AT.FDCWD, &path_z, 0o755);
-                        const err = std.posix.errno(rc);
-                        if (err != .SUCCESS and err != .EXIST) return error.MkdirFailed;
-                    }
+                    const io = std.Io.Threaded.global_single_threaded.io();
+                    std.Io.Dir.cwd().createDirPath(io, absolute_dest_dir) catch return error.MkdirFailed;
                 }
 
                 for (self.include_directories) |it| {
@@ -209,18 +204,26 @@ pub const RunProtocStep = struct {
                     std.debug.print("\n", .{});
                 }
 
-                _ = try step.evalZigProcess(argv.items, std.Progress.Node.none, false, null, b.allocator);
+                const bio = b.graph.io;
+                var child = try std.process.spawn(bio, .{
+                    .argv = argv.items,
+                });
+                const term = try child.wait(bio);
+                if (term != .exited or term.exited != 0) {
+                    return step.fail("protoc failed with exit code {d}", .{term.exited});
+                }
             }
         }
 
         { // run zig fmt <destination>
-            var argv: std.ArrayList([]const u8) = .empty;
-
-            try argv.append(b.allocator, b.graph.zig_exe);
-            try argv.append(b.allocator, "fmt");
-            try argv.append(b.allocator, absolute_dest_dir);
-
-            _ = try step.evalZigProcess(argv.items, std.Progress.Node.none, false, null, b.allocator);
+            const bio = b.graph.io;
+            var child = try std.process.spawn(bio, .{
+                .argv = &.{ b.graph.zig_exe, "fmt", absolute_dest_dir },
+            });
+            const term = try child.wait(bio);
+            if (term != .exited or term.exited != 0) {
+                return step.fail("zig fmt failed with exit code {d}", .{term.exited});
+            }
         }
     }
 };
