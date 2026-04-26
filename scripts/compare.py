@@ -204,10 +204,21 @@ def compare_one(
     fixed_floor_ns = abs(bm) * (fixed_floor_pct / 100.0)
     effective_gate = max(variance_gate, fixed_floor_ns)
 
+    # ns/op is "lower is better": a negative delta_pct means the
+    # candidate ran faster (an IMPROVEMENT); a positive delta_pct means
+    # it ran slower (a REGRESSION). The two thresholds are configured
+    # as positive magnitudes, applied with appropriate sign here:
+    #   target_gain_pct = 5.0   -> IMPROVEMENT when delta_pct <= -5.0
+    #   max_regression_pct = -3.0 -> REGRESSION when delta_pct >= +3.0
+    # The plan stores `max_regression_pct` as a negative number for
+    # historical reasons; we use abs() so the gate is symmetric and
+    # readable.
     status = "neutral"
-    if delta_pct < max_regression_pct and abs(delta_ns) > effective_gate:
+    regression_threshold = abs(max_regression_pct)
+    improvement_threshold = -abs(target_gain_pct)
+    if delta_pct >= regression_threshold and abs(delta_ns) > effective_gate:
         status = "regression"
-    elif delta_pct >= target_gain_pct and abs(delta_ns) > effective_gate:
+    elif delta_pct <= improvement_threshold and abs(delta_ns) > effective_gate:
         status = "improvement"
 
     return {

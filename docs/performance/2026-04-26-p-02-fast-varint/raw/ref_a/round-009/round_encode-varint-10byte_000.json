@@ -1,0 +1,39 @@
+{
+  "schema_version": "1",
+  "scenario_id": "encode-varint-10byte",
+  "layer": "micro",
+  "language": "zig",
+  "variant": "A",
+  "git_sha": "09fa0d867f6bf592ea9aed94e9443d2ac601d9c9",
+  "command": "zig build bench-micro -- --scenario encode-varint-10byte",
+  "timestamp": "2026-04-26T20:25:12Z",
+  "os": "linux",
+  "arch": "x86_64",
+  "runtime_version": "zig 0.16.0",
+  "warmups": 0,
+  "rounds": 1,
+  "round": 0,
+  "warmup": false,
+  "iterations": 1000000,
+  "metrics": {
+    "ns_per_op_median": 38,
+    "ns_per_op_p50": 38,
+    "ns_per_op_p95": 41,
+    "ns_per_op_p99": 57,
+    "ns_per_op_stddev": 29.818624707104707,
+    "ns_per_op_min": 32,
+    "ns_per_op_max": 13371
+  },
+  "samples": [38],
+  "counters": {
+    "alloc_delta_bytes": 0,
+    "allocs_per_op": 0,
+    "input_bytes": 8,
+    "bytes_per_op": 0,
+    "zero_alloc_observed": true,
+    "zero_alloc_expected": true,
+    "alloc_assertion": "pass",
+    "alloc_threshold_bytes": 0,
+    "concurrency_shape": "N=1"
+  }
+}
