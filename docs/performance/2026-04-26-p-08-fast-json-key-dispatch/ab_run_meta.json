@@ -1,0 +1,8 @@
+{
+  "ref_a": "e4c20a5792f5e2bf5298ca4882f764da314d73bb",
+  "ref_b": "2b474019209e6f608c17177178d2f24f7599fd59",
+  "rounds": 10,
+  "warmups": 1,
+  "disable_flag": "none",
+  "out_dir": "docs/performance/2026-04-26-p-08-fast-json-key-dispatch"
+}
