@@ -126,6 +126,14 @@ pub fn build(b: *std.Build) !void {
                 .optimize = optimize,
             }),
         }),
+        b.addTest(.{
+            .name = "fuzz_decode",
+            .root_module = b.createModule(.{
+                .root_source_file = b.path("tests/fuzz_decode.zig"),
+                .target = target,
+                .optimize = optimize,
+            }),
+        }),
     };
 
     const convertStep = RunProtocStep.create(b, target, .{
@@ -174,4 +182,29 @@ pub fn build(b: *std.Build) !void {
     });
 
     bootstrap.dependOn(&bootstrapConversion.step);
+
+    // Bench harness — forces ReleaseFast regardless of -Doptimize so the
+    // numbers are meaningful even when the user is iterating on tests in
+    // Debug. Run via `zig build bench`.
+    const bench_step = b.step("bench", "Run wire-decoder microbenchmarks");
+    // Default to ReleaseFast for meaningful numbers, but allow override
+    // via `-Doptimize=Debug` for development. (As of Zig 0.16.0 the
+    // compiler ICEs on ReleaseFast for this tiny exe; ReleaseSafe is
+    // a safe default that still benefits from the compiler's
+    // optimizations.)
+    const bench_optimize: std.builtin.OptimizeMode = if (b.user_input_options.contains("optimize"))
+        optimize
+    else
+        .ReleaseSafe;
+    const bench_exe = b.addExecutable(.{
+        .name = "bench",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("bench/main.zig"),
+            .target = target,
+            .optimize = bench_optimize,
+        }),
+    });
+    bench_exe.root_module.addImport("protobuf", module);
+    const run_bench = b.addRunArtifact(bench_exe);
+    bench_step.dependOn(&run_bench.step);
 }
