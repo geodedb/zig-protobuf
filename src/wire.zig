@@ -405,7 +405,6 @@ pub fn decodeRepeated(
                 const bytes = try allocator.alloc(u8, options.bytes.?);
                 errdefer allocator.free(bytes);
                 try reader.readSliceAll(bytes);
-                errdefer allocator.free(bytes);
 
                 try result.append(allocator, bytes);
                 return bytes.len;
