@@ -1,10 +1,4 @@
 const std = @import("std");
-const builtin = @import("builtin");
-const Build = std.Build;
-const Step = std.Build.Step;
-const fs = std.fs;
-const mem = std.mem;
-const LazyPath = std.Build.LazyPath;
 const build_util = @import("utils/build_util.zig");
 pub const RunProtocStep = build_util.RunProtocStep;
 
@@ -147,10 +141,13 @@ pub fn build(b: *std.Build) !void {
     });
 
     for (tests) |test_item| {
+        // The "protobuf" test imports src/protobuf.zig as its root module,
+        // so re-adding it as a named import would create a self-referential
+        // module graph. All other test artifacts need it to satisfy
+        // `@import("protobuf")` from generated `.pb.zig`.
         if (!std.mem.eql(u8, "protobuf", test_item.name)) {
             test_item.root_module.addImport("protobuf", module);
         }
-        test_item.root_module.addImport("protobuf", module);
 
         // This creates a build step. It will be visible in the `zig build --help` menu,
         // and can be selected like this: `zig build test`
