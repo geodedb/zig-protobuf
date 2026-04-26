@@ -1,0 +1,694 @@
+{
+  "schema_version": "1",
+  "date": "2026-04-26",
+  "slug": "encode-decode-baseline",
+  "target_repo": "devnw/zig/protobuf",
+  "baseline_ref": "9d77025",
+  "zig_version": "0.16.0",
+  "optimize_mode": "ReleaseSafe",
+  "optimize_mode_note": "ReleaseFast causes compiler ICE in Zig 0.16.0 for the bench exe (see build.zig:194-198). ReleaseSafe is the mandated floor. TODO: retry ReleaseFast on next Zig point release.",
+  "scenarios": [
+    {
+      "scenario_id": "decode-varint-1byte",
+      "layer": "micro",
+      "language": "zig",
+      "target_function": "wire.zig:262",
+      "gap_ids": ["P-02"],
+      "entry_point": "zig build bench-micro -- --scenario decode-varint-1byte --rounds 10 --warmups 1 --out raw/",
+      "command": "zig build bench-micro -- --scenario decode-varint-1byte --rounds 10 --warmups 1 --out raw/",
+      "metrics_to_capture": ["ns_per_op_median", "ns_per_op_p50", "ns_per_op_p95", "ns_per_op_p99", "ns_per_op_stddev", "allocs_per_op", "alloc_delta_bytes"],
+      "concurrency_shape": "N=1",
+      "target_gain_pct": 5.0,
+      "max_regression_pct": -3.0,
+      "zero_alloc_expected": true,
+      "alloc_probe": {
+        "description": "CountingAllocator wraps std.heap.GeneralPurposeAllocator; asserts alloc_delta_bytes == 0 after timing loop; process exits non-zero if assertion fails",
+        "counting_allocator_fields": ["total_bytes", "alloc_count"],
+        "assertion": "alloc_delta_bytes == 0",
+        "failure_action": "exit(1) with message 'zero-alloc assertion failed for decode-varint-1byte'"
+      },
+      "inputs": {
+        "description": "1-byte varint encoding of value 1",
+        "bytes": "0x01",
+        "input_size_bytes": 1
+      },
+      "iterations_per_round": 1000000,
+      "stress_multiplier": 20,
+      "target_runtime_budget": {
+        "ci_safe": true,
+        "ci_budget_seconds": 5,
+        "full_budget_seconds": 30
+      }
+    },
+    {
+      "scenario_id": "decode-varint-2byte",
+      "layer": "micro",
+      "language": "zig",
+      "target_function": "wire.zig:262",
+      "gap_ids": ["P-02"],
+      "entry_point": "zig build bench-micro -- --scenario decode-varint-2byte --rounds 10 --warmups 1 --out raw/",
+      "command": "zig build bench-micro -- --scenario decode-varint-2byte --rounds 10 --warmups 1 --out raw/",
+      "metrics_to_capture": ["ns_per_op_median", "ns_per_op_p50", "ns_per_op_p95", "ns_per_op_p99", "ns_per_op_stddev", "allocs_per_op", "alloc_delta_bytes"],
+      "concurrency_shape": "N=1",
+      "target_gain_pct": 5.0,
+      "max_regression_pct": -3.0,
+      "zero_alloc_expected": true,
+      "alloc_probe": {
+        "description": "CountingAllocator wraps std.heap.GeneralPurposeAllocator; asserts alloc_delta_bytes == 0 after timing loop; process exits non-zero if assertion fails",
+        "counting_allocator_fields": ["total_bytes", "alloc_count"],
+        "assertion": "alloc_delta_bytes == 0",
+        "failure_action": "exit(1) with message 'zero-alloc assertion failed for decode-varint-2byte'"
+      },
+      "inputs": {
+        "description": "2-byte varint encoding of value 300 (0xAC 0x02)",
+        "bytes": "0xAC 0x02",
+        "input_size_bytes": 2
+      },
+      "iterations_per_round": 1000000,
+      "stress_multiplier": 20,
+      "target_runtime_budget": {
+        "ci_safe": true,
+        "ci_budget_seconds": 5,
+        "full_budget_seconds": 30
+      }
+    },
+    {
+      "scenario_id": "decode-varint-5byte-i32",
+      "layer": "micro",
+      "language": "zig",
+      "target_function": "wire.zig:262",
+      "gap_ids": ["P-02"],
+      "entry_point": "zig build bench-micro -- --scenario decode-varint-5byte-i32 --rounds 10 --warmups 1 --out raw/",
+      "command": "zig build bench-micro -- --scenario decode-varint-5byte-i32 --rounds 10 --warmups 1 --out raw/",
+      "metrics_to_capture": ["ns_per_op_median", "ns_per_op_p50", "ns_per_op_p95", "ns_per_op_p99", "ns_per_op_stddev", "allocs_per_op", "alloc_delta_bytes"],
+      "concurrency_shape": "N=1",
+      "target_gain_pct": 5.0,
+      "max_regression_pct": -3.0,
+      "zero_alloc_expected": true,
+      "alloc_probe": {
+        "description": "CountingAllocator wraps std.heap.GeneralPurposeAllocator; asserts alloc_delta_bytes == 0 after timing loop; process exits non-zero if assertion fails",
+        "counting_allocator_fields": ["total_bytes", "alloc_count"],
+        "assertion": "alloc_delta_bytes == 0",
+        "failure_action": "exit(1) with message 'zero-alloc assertion failed for decode-varint-5byte-i32'"
+      },
+      "inputs": {
+        "description": "5-byte varint encoding of max uint32 value 4294967295",
+        "bytes": "0xFF 0xFF 0xFF 0xFF 0x0F",
+        "input_size_bytes": 5
+      },
+      "iterations_per_round": 1000000,
+      "stress_multiplier": 20,
+      "target_runtime_budget": {
+        "ci_safe": true,
+        "ci_budget_seconds": 5,
+        "full_budget_seconds": 30
+      }
+    },
+    {
+      "scenario_id": "decode-varint-10byte-i64",
+      "layer": "micro",
+      "language": "zig",
+      "target_function": "wire.zig:262",
+      "gap_ids": ["P-02"],
+      "entry_point": "zig build bench-micro -- --scenario decode-varint-10byte-i64 --rounds 10 --warmups 1 --out raw/",
+      "command": "zig build bench-micro -- --scenario decode-varint-10byte-i64 --rounds 10 --warmups 1 --out raw/",
+      "metrics_to_capture": ["ns_per_op_median", "ns_per_op_p50", "ns_per_op_p95", "ns_per_op_p99", "ns_per_op_stddev", "allocs_per_op", "alloc_delta_bytes"],
+      "concurrency_shape": "N=1",
+      "target_gain_pct": 5.0,
+      "max_regression_pct": -3.0,
+      "zero_alloc_expected": true,
+      "alloc_probe": {
+        "description": "CountingAllocator wraps std.heap.GeneralPurposeAllocator; asserts alloc_delta_bytes == 0 after timing loop; process exits non-zero if assertion fails",
+        "counting_allocator_fields": ["total_bytes", "alloc_count"],
+        "assertion": "alloc_delta_bytes == 0",
+        "failure_action": "exit(1) with message 'zero-alloc assertion failed for decode-varint-10byte-i64'"
+      },
+      "inputs": {
+        "description": "10-byte varint encoding of max uint64 value 18446744073709551615",
+        "bytes": "0xFF 0xFF 0xFF 0xFF 0xFF 0xFF 0xFF 0xFF 0xFF 0x01",
+        "input_size_bytes": 10
+      },
+      "iterations_per_round": 1000000,
+      "stress_multiplier": 20,
+      "target_runtime_budget": {
+        "ci_safe": true,
+        "ci_budget_seconds": 5,
+        "full_budget_seconds": 30
+      }
+    },
+    {
+      "scenario_id": "decode-fixed32",
+      "layer": "micro",
+      "language": "zig",
+      "target_function": "wire.zig:295",
+      "gap_ids": [],
+      "entry_point": "zig build bench-micro -- --scenario decode-fixed32 --rounds 10 --warmups 1 --out raw/",
+      "command": "zig build bench-micro -- --scenario decode-fixed32 --rounds 10 --warmups 1 --out raw/",
+      "metrics_to_capture": ["ns_per_op_median", "ns_per_op_p50", "ns_per_op_p95", "ns_per_op_p99", "ns_per_op_stddev", "allocs_per_op", "alloc_delta_bytes"],
+      "concurrency_shape": "N=1",
+      "target_gain_pct": 5.0,
+      "max_regression_pct": -3.0,
+      "zero_alloc_expected": true,
+      "alloc_probe": {
+        "description": "CountingAllocator wraps std.heap.GeneralPurposeAllocator; asserts alloc_delta_bytes == 0 after timing loop; process exits non-zero if assertion fails",
+        "counting_allocator_fields": ["total_bytes", "alloc_count"],
+        "assertion": "alloc_delta_bytes == 0",
+        "failure_action": "exit(1) with message 'zero-alloc assertion failed for decode-fixed32'"
+      },
+      "inputs": {
+        "description": "4-byte little-endian fixed32 encoding of float 1.0 (0x00 0x00 0x80 0x3F)",
+        "bytes": "0x00 0x00 0x80 0x3F",
+        "input_size_bytes": 4
+      },
+      "iterations_per_round": 1000000,
+      "stress_multiplier": 20,
+      "target_runtime_budget": {
+        "ci_safe": true,
+        "ci_budget_seconds": 5,
+        "full_budget_seconds": 30
+      }
+    },
+    {
+      "scenario_id": "decode-fixed64",
+      "layer": "micro",
+      "language": "zig",
+      "target_function": "wire.zig:295",
+      "gap_ids": [],
+      "entry_point": "zig build bench-micro -- --scenario decode-fixed64 --rounds 10 --warmups 1 --out raw/",
+      "command": "zig build bench-micro -- --scenario decode-fixed64 --rounds 10 --warmups 1 --out raw/",
+      "metrics_to_capture": ["ns_per_op_median", "ns_per_op_p50", "ns_per_op_p95", "ns_per_op_p99", "ns_per_op_stddev", "allocs_per_op", "alloc_delta_bytes"],
+      "concurrency_shape": "N=1",
+      "target_gain_pct": 5.0,
+      "max_regression_pct": -3.0,
+      "zero_alloc_expected": true,
+      "alloc_probe": {
+        "description": "CountingAllocator wraps std.heap.GeneralPurposeAllocator; asserts alloc_delta_bytes == 0 after timing loop; process exits non-zero if assertion fails",
+        "counting_allocator_fields": ["total_bytes", "alloc_count"],
+        "assertion": "alloc_delta_bytes == 0",
+        "failure_action": "exit(1) with message 'zero-alloc assertion failed for decode-fixed64'"
+      },
+      "inputs": {
+        "description": "8-byte little-endian fixed64 encoding of double 1.0 (0x00 0x00 0x00 0x00 0x00 0x00 0xF0 0x3F)",
+        "bytes": "0x00 0x00 0x00 0x00 0x00 0x00 0xF0 0x3F",
+        "input_size_bytes": 8
+      },
+      "iterations_per_round": 1000000,
+      "stress_multiplier": 20,
+      "target_runtime_budget": {
+        "ci_safe": true,
+        "ci_budget_seconds": 5,
+        "full_budget_seconds": 30
+      }
+    },
+    {
+      "scenario_id": "decode-tag",
+      "layer": "micro",
+      "language": "zig",
+      "target_function": "wire.zig:64",
+      "gap_ids": ["P-03"],
+      "entry_point": "zig build bench-micro -- --scenario decode-tag --rounds 10 --warmups 1 --out raw/",
+      "command": "zig build bench-micro -- --scenario decode-tag --rounds 10 --warmups 1 --out raw/",
+      "metrics_to_capture": ["ns_per_op_median", "ns_per_op_p50", "ns_per_op_p95", "ns_per_op_p99", "ns_per_op_stddev", "allocs_per_op", "alloc_delta_bytes"],
+      "concurrency_shape": "N=1",
+      "target_gain_pct": 5.0,
+      "max_regression_pct": -3.0,
+      "zero_alloc_expected": true,
+      "alloc_probe": {
+        "description": "CountingAllocator wraps std.heap.GeneralPurposeAllocator; asserts alloc_delta_bytes == 0 after timing loop; process exits non-zero if assertion fails",
+        "counting_allocator_fields": ["total_bytes", "alloc_count"],
+        "assertion": "alloc_delta_bytes == 0",
+        "failure_action": "exit(1) with message 'zero-alloc assertion failed for decode-tag'"
+      },
+      "inputs": {
+        "description": "1-byte tag: field 1, wire type varint (0x08 = (1 << 3) | 0)",
+        "bytes": "0x08",
+        "input_size_bytes": 1
+      },
+      "iterations_per_round": 1000000,
+      "stress_multiplier": 20,
+      "target_runtime_budget": {
+        "ci_safe": true,
+        "ci_budget_seconds": 5,
+        "full_budget_seconds": 30
+      }
+    },
+    {
+      "scenario_id": "encode-varint-1byte",
+      "layer": "micro",
+      "language": "zig",
+      "target_function": "protobuf.zig:writeRawVarint",
+      "gap_ids": ["P-07"],
+      "entry_point": "zig build bench-micro -- --scenario encode-varint-1byte --rounds 10 --warmups 1 --out raw/",
+      "command": "zig build bench-micro -- --scenario encode-varint-1byte --rounds 10 --warmups 1 --out raw/",
+      "metrics_to_capture": ["ns_per_op_median", "ns_per_op_p50", "ns_per_op_p95", "ns_per_op_p99", "ns_per_op_stddev", "allocs_per_op", "alloc_delta_bytes", "bytes_per_op"],
+      "concurrency_shape": "N=1",
+      "target_gain_pct": 5.0,
+      "max_regression_pct": -3.0,
+      "zero_alloc_expected": true,
+      "alloc_probe": {
+        "description": "CountingAllocator wraps std.heap.GeneralPurposeAllocator; output written to a fixed stack buffer; asserts alloc_delta_bytes == 0; P-07 regression guard",
+        "counting_allocator_fields": ["total_bytes", "alloc_count"],
+        "assertion": "alloc_delta_bytes == 0",
+        "failure_action": "exit(1) with message 'zero-alloc assertion failed for encode-varint-1byte (P-07 regression)'"
+      },
+      "inputs": {
+        "description": "u64 value 1; encodes as single byte 0x01",
+        "value": 1,
+        "input_size_bytes": 8
+      },
+      "iterations_per_round": 1000000,
+      "stress_multiplier": 20,
+      "target_runtime_budget": {
+        "ci_safe": true,
+        "ci_budget_seconds": 5,
+        "full_budget_seconds": 30
+      }
+    },
+    {
+      "scenario_id": "encode-varint-10byte",
+      "layer": "micro",
+      "language": "zig",
+      "target_function": "protobuf.zig:writeRawVarint",
+      "gap_ids": ["P-07"],
+      "entry_point": "zig build bench-micro -- --scenario encode-varint-10byte --rounds 10 --warmups 1 --out raw/",
+      "command": "zig build bench-micro -- --scenario encode-varint-10byte --rounds 10 --warmups 1 --out raw/",
+      "metrics_to_capture": ["ns_per_op_median", "ns_per_op_p50", "ns_per_op_p95", "ns_per_op_p99", "ns_per_op_stddev", "allocs_per_op", "alloc_delta_bytes", "bytes_per_op"],
+      "concurrency_shape": "N=1",
+      "target_gain_pct": 5.0,
+      "max_regression_pct": -3.0,
+      "zero_alloc_expected": true,
+      "alloc_probe": {
+        "description": "CountingAllocator wraps std.heap.GeneralPurposeAllocator; output written to a fixed stack buffer; asserts alloc_delta_bytes == 0; P-07 regression guard",
+        "counting_allocator_fields": ["total_bytes", "alloc_count"],
+        "assertion": "alloc_delta_bytes == 0",
+        "failure_action": "exit(1) with message 'zero-alloc assertion failed for encode-varint-10byte (P-07 regression)'"
+      },
+      "inputs": {
+        "description": "u64 value 18446744073709551615 (max uint64); encodes as 10 bytes",
+        "value": 18446744073709551615,
+        "input_size_bytes": 8
+      },
+      "iterations_per_round": 1000000,
+      "stress_multiplier": 20,
+      "target_runtime_budget": {
+        "ci_safe": true,
+        "ci_budget_seconds": 5,
+        "full_budget_seconds": 30
+      }
+    },
+    {
+      "scenario_id": "encode-fixed32",
+      "layer": "micro",
+      "language": "zig",
+      "target_function": "protobuf.zig:writeFixed",
+      "gap_ids": [],
+      "entry_point": "zig build bench-micro -- --scenario encode-fixed32 --rounds 10 --warmups 1 --out raw/",
+      "command": "zig build bench-micro -- --scenario encode-fixed32 --rounds 10 --warmups 1 --out raw/",
+      "metrics_to_capture": ["ns_per_op_median", "ns_per_op_p50", "ns_per_op_p95", "ns_per_op_p99", "ns_per_op_stddev", "allocs_per_op", "alloc_delta_bytes", "bytes_per_op"],
+      "concurrency_shape": "N=1",
+      "target_gain_pct": 5.0,
+      "max_regression_pct": -3.0,
+      "zero_alloc_expected": true,
+      "alloc_probe": {
+        "description": "CountingAllocator wraps std.heap.GeneralPurposeAllocator; output written to a fixed stack buffer; asserts alloc_delta_bytes == 0",
+        "counting_allocator_fields": ["total_bytes", "alloc_count"],
+        "assertion": "alloc_delta_bytes == 0",
+        "failure_action": "exit(1) with message 'zero-alloc assertion failed for encode-fixed32'"
+      },
+      "inputs": {
+        "description": "f32 value 1.0; encodes as 4 LE bytes",
+        "value": 1.0,
+        "input_size_bytes": 4
+      },
+      "iterations_per_round": 1000000,
+      "stress_multiplier": 20,
+      "target_runtime_budget": {
+        "ci_safe": true,
+        "ci_budget_seconds": 5,
+        "full_budget_seconds": 30
+      }
+    },
+    {
+      "scenario_id": "encode-fixed64",
+      "layer": "micro",
+      "language": "zig",
+      "target_function": "protobuf.zig:writeFixed",
+      "gap_ids": [],
+      "entry_point": "zig build bench-micro -- --scenario encode-fixed64 --rounds 10 --warmups 1 --out raw/",
+      "command": "zig build bench-micro -- --scenario encode-fixed64 --rounds 10 --warmups 1 --out raw/",
+      "metrics_to_capture": ["ns_per_op_median", "ns_per_op_p50", "ns_per_op_p95", "ns_per_op_p99", "ns_per_op_stddev", "allocs_per_op", "alloc_delta_bytes", "bytes_per_op"],
+      "concurrency_shape": "N=1",
+      "target_gain_pct": 5.0,
+      "max_regression_pct": -3.0,
+      "zero_alloc_expected": true,
+      "alloc_probe": {
+        "description": "CountingAllocator wraps std.heap.GeneralPurposeAllocator; output written to a fixed stack buffer; asserts alloc_delta_bytes == 0",
+        "counting_allocator_fields": ["total_bytes", "alloc_count"],
+        "assertion": "alloc_delta_bytes == 0",
+        "failure_action": "exit(1) with message 'zero-alloc assertion failed for encode-fixed64'"
+      },
+      "inputs": {
+        "description": "f64 value 1.0; encodes as 8 LE bytes",
+        "value": 1.0,
+        "input_size_bytes": 8
+      },
+      "iterations_per_round": 1000000,
+      "stress_multiplier": 20,
+      "target_runtime_budget": {
+        "ci_safe": true,
+        "ci_budget_seconds": 5,
+        "full_budget_seconds": 30
+      }
+    },
+    {
+      "scenario_id": "decode-fixture-vector-tile",
+      "layer": "integration",
+      "language": "zig",
+      "target_function": "wire.zig:575",
+      "gap_ids": ["P-03", "P-05"],
+      "entry_point": "zig build bench-integration -- --scenario decode-fixture-vector-tile --rounds 5 --warmups 1 --out raw/",
+      "command": "zig build bench-integration -- --scenario decode-fixture-vector-tile --rounds 5 --warmups 1 --out raw/",
+      "metrics_to_capture": ["ns_per_op_median", "ns_per_op_p50", "ns_per_op_p95", "ns_per_op_p99", "ns_per_op_stddev", "allocs_per_op", "alloc_delta_bytes", "bytes_per_op"],
+      "concurrency_shape": "N=1",
+      "target_gain_pct": 5.0,
+      "max_regression_pct": -3.0,
+      "zero_alloc_expected": false,
+      "inputs": {
+        "description": "tests/fixtures/vector_tile.bin — 125 KB real-world vector tile protobuf fixture; must exist at bench start",
+        "fixture_path": "tests/fixtures/vector_tile.bin",
+        "input_size_bytes": 128000
+      },
+      "iterations_per_round": 1,
+      "stress_multiplier": 20,
+      "target_runtime_budget": {
+        "ci_safe": true,
+        "ci_budget_seconds": 30,
+        "full_budget_seconds": 120,
+        "promotion_note": "If single round > 30s, move result files to raw/deeper/ and exclude from bench-ci budget"
+      }
+    },
+    {
+      "scenario_id": "encode-fixture-vector-tile-roundtrip",
+      "layer": "integration",
+      "language": "zig",
+      "target_function": "protobuf.zig:275",
+      "gap_ids": ["P-01", "P-04"],
+      "entry_point": "zig build bench-integration -- --scenario encode-fixture-vector-tile-roundtrip --rounds 5 --warmups 1 --out raw/",
+      "command": "zig build bench-integration -- --scenario encode-fixture-vector-tile-roundtrip --rounds 5 --warmups 1 --out raw/",
+      "metrics_to_capture": ["ns_per_op_median", "ns_per_op_p50", "ns_per_op_p95", "ns_per_op_p99", "ns_per_op_stddev", "allocs_per_op", "alloc_delta_bytes", "bytes_per_op"],
+      "concurrency_shape": "N=1",
+      "target_gain_pct": 5.0,
+      "max_regression_pct": -3.0,
+      "zero_alloc_expected": false,
+      "inputs": {
+        "description": "tests/fixtures/vector_tile.bin decoded to in-memory struct then re-encoded; measures full encode pipeline including writeSubmessage and writePackedFixedList",
+        "fixture_path": "tests/fixtures/vector_tile.bin",
+        "input_size_bytes": 128000
+      },
+      "iterations_per_round": 1,
+      "stress_multiplier": 20,
+      "target_runtime_budget": {
+        "ci_safe": true,
+        "ci_budget_seconds": 30,
+        "full_budget_seconds": 120
+      }
+    },
+    {
+      "scenario_id": "dupe-fixture-vector-tile",
+      "layer": "integration",
+      "language": "zig",
+      "target_function": "protobuf.zig:dupeImpl",
+      "gap_ids": ["P-10"],
+      "entry_point": "zig build bench-integration -- --scenario dupe-fixture-vector-tile --rounds 5 --warmups 1 --out raw/",
+      "command": "zig build bench-integration -- --scenario dupe-fixture-vector-tile --rounds 5 --warmups 1 --out raw/",
+      "metrics_to_capture": ["ns_per_op_median", "ns_per_op_p50", "ns_per_op_p95", "ns_per_op_p99", "ns_per_op_stddev", "allocs_per_op", "alloc_delta_bytes", "bytes_per_op"],
+      "concurrency_shape": "N=1",
+      "target_gain_pct": 5.0,
+      "max_regression_pct": -3.0,
+      "zero_alloc_expected": false,
+      "inputs": {
+        "description": "tests/fixtures/vector_tile.bin decoded then deep-cloned via dupe(); P-10 regression guard — dupeImpl now uses initCapacity",
+        "fixture_path": "tests/fixtures/vector_tile.bin",
+        "input_size_bytes": 128000
+      },
+      "iterations_per_round": 1,
+      "stress_multiplier": 20,
+      "target_runtime_budget": {
+        "ci_safe": true,
+        "ci_budget_seconds": 30,
+        "full_budget_seconds": 120
+      }
+    },
+    {
+      "scenario_id": "decode-fixture-graphics",
+      "layer": "integration",
+      "language": "zig",
+      "target_function": "wire.zig:575",
+      "gap_ids": ["P-03", "P-05"],
+      "entry_point": "zig build bench-integration -- --scenario decode-fixture-graphics --rounds 5 --warmups 1 --out raw/",
+      "command": "zig build bench-integration -- --scenario decode-fixture-graphics --rounds 5 --warmups 1 --out raw/",
+      "metrics_to_capture": ["ns_per_op_median", "ns_per_op_p50", "ns_per_op_p95", "ns_per_op_p99", "ns_per_op_stddev", "allocs_per_op", "alloc_delta_bytes", "bytes_per_op"],
+      "concurrency_shape": "N=1",
+      "target_gain_pct": 5.0,
+      "max_regression_pct": -3.0,
+      "zero_alloc_expected": false,
+      "inputs": {
+        "description": "tests/fixtures/graphics.bin — 1.1 MB graphics protobuf fixture; if single round > 30s this scenario is demoted to the deeper suite automatically",
+        "fixture_path": "tests/fixtures/graphics.bin",
+        "input_size_bytes": 1153433
+      },
+      "iterations_per_round": 1,
+      "stress_multiplier": 20,
+      "target_runtime_budget": {
+        "ci_safe": true,
+        "ci_budget_seconds": 30,
+        "full_budget_seconds": 300,
+        "promotion_note": "If single round > 30s, runner script moves result to raw/deeper/ and excludes from bench-ci 60s budget"
+      }
+    },
+    {
+      "scenario_id": "decode-fixture-graphics-deep",
+      "layer": "integration",
+      "language": "zig",
+      "target_function": "wire.zig:575",
+      "gap_ids": ["P-03", "P-05"],
+      "entry_point": "zig build bench-integration -- --scenario decode-fixture-graphics-deep --rounds 50 --warmups 2 --out raw/deeper/",
+      "command": "zig build bench-integration -- --scenario decode-fixture-graphics-deep --rounds 50 --warmups 2 --out raw/deeper/",
+      "metrics_to_capture": ["ns_per_op_median", "ns_per_op_p50", "ns_per_op_p95", "ns_per_op_p99", "ns_per_op_stddev", "allocs_per_op", "alloc_delta_bytes", "bytes_per_op"],
+      "concurrency_shape": "N=1",
+      "target_gain_pct": 5.0,
+      "max_regression_pct": -3.0,
+      "zero_alloc_expected": false,
+      "inputs": {
+        "description": "tests/fixtures/graphics.bin — 50 rounds for tail-latency p95/p99 data; manual/scheduled only",
+        "fixture_path": "tests/fixtures/graphics.bin",
+        "input_size_bytes": 1153433
+      },
+      "iterations_per_round": 1,
+      "stress_multiplier": 1,
+      "target_runtime_budget": {
+        "ci_safe": false,
+        "ci_budget_seconds": null,
+        "full_budget_seconds": 600,
+        "schedule": "manual or nightly"
+      }
+    },
+    {
+      "scenario_id": "json-encode-fixture-vector-tile",
+      "layer": "integration",
+      "language": "zig",
+      "target_function": "json.zig:133",
+      "gap_ids": ["P-09"],
+      "entry_point": "zig build bench-integration -- --scenario json-encode-fixture-vector-tile --rounds 50 --warmups 2 --out raw/deeper/",
+      "command": "zig build bench-integration -- --scenario json-encode-fixture-vector-tile --rounds 50 --warmups 2 --out raw/deeper/",
+      "metrics_to_capture": ["ns_per_op_median", "ns_per_op_p50", "ns_per_op_p95", "ns_per_op_p99", "ns_per_op_stddev", "allocs_per_op", "alloc_delta_bytes", "bytes_per_op"],
+      "concurrency_shape": "N=1",
+      "target_gain_pct": 5.0,
+      "max_regression_pct": -3.0,
+      "zero_alloc_expected": false,
+      "inputs": {
+        "description": "tests/fixtures/vector_tile.bin decoded to struct then JSON-encoded via json.encode(); P-09 baseline for value-tree round-trip cost",
+        "fixture_path": "tests/fixtures/vector_tile.bin",
+        "input_size_bytes": 128000
+      },
+      "iterations_per_round": 1,
+      "stress_multiplier": 1,
+      "target_runtime_budget": {
+        "ci_safe": false,
+        "ci_budget_seconds": null,
+        "full_budget_seconds": 300,
+        "schedule": "manual or nightly"
+      }
+    },
+    {
+      "scenario_id": "json-decode-fixture-vector-tile",
+      "layer": "integration",
+      "language": "zig",
+      "target_function": "json.zig:43",
+      "gap_ids": ["P-08"],
+      "entry_point": "zig build bench-integration -- --scenario json-decode-fixture-vector-tile --rounds 50 --warmups 2 --out raw/deeper/",
+      "command": "zig build bench-integration -- --scenario json-decode-fixture-vector-tile --rounds 50 --warmups 2 --out raw/deeper/",
+      "metrics_to_capture": ["ns_per_op_median", "ns_per_op_p50", "ns_per_op_p95", "ns_per_op_p99", "ns_per_op_stddev", "allocs_per_op", "alloc_delta_bytes", "bytes_per_op"],
+      "concurrency_shape": "N=1",
+      "target_gain_pct": 5.0,
+      "max_regression_pct": -3.0,
+      "zero_alloc_expected": false,
+      "inputs": {
+        "description": "JSON serialization of the vector_tile fixture decoded then re-serialized to JSON string; P-08 baseline for O(N^2) key dispatch cost; input is the JSON bytes produced by json.encode()",
+        "fixture_path": "tests/fixtures/vector_tile.bin",
+        "input_size_bytes": 128000
+      },
+      "iterations_per_round": 1,
+      "stress_multiplier": 1,
+      "target_runtime_budget": {
+        "ci_safe": false,
+        "ci_budget_seconds": null,
+        "full_budget_seconds": 300,
+        "schedule": "manual or nightly"
+      }
+    },
+    {
+      "scenario_id": "encode-decode-baseline-comparison",
+      "layer": "comparison",
+      "language": "zig",
+      "target_function": "multiple — see basket_scenario_ids",
+      "gap_ids": ["P-01", "P-02", "P-03", "P-04", "P-05", "P-07", "P-08", "P-09", "P-10"],
+      "entry_point": "bash scripts/ab_runner.sh --ref-a 9d77025 --ref-b HEAD --out docs/performance/2026-04-26-encode-decode-baseline/",
+      "command": "bash scripts/ab_runner.sh --ref-a 9d77025 --ref-b HEAD --out docs/performance/2026-04-26-encode-decode-baseline/",
+      "basket_scenario_ids": [
+        "decode-varint-1byte",
+        "decode-varint-2byte",
+        "decode-varint-5byte-i32",
+        "decode-varint-10byte-i64",
+        "decode-fixed32",
+        "decode-fixed64",
+        "decode-tag",
+        "encode-varint-1byte",
+        "encode-varint-10byte",
+        "encode-fixed32",
+        "encode-fixed64",
+        "decode-fixture-vector-tile",
+        "encode-fixture-vector-tile-roundtrip",
+        "dupe-fixture-vector-tile",
+        "decode-fixture-graphics"
+      ],
+      "metrics_to_capture": ["ns_per_op_median", "ns_per_op_p50", "ns_per_op_p95", "ns_per_op_p99", "allocs_per_op", "alloc_delta_bytes"],
+      "concurrency_shape": "N=1",
+      "target_gain_pct": 5.0,
+      "max_regression_pct": -3.0,
+      "zero_alloc_expected": false,
+      "inputs": {
+        "description": "Aggregation of all micro + CI-safe integration scenarios; driven by ab_runner.sh; not a standalone bench binary invocation"
+      },
+      "iterations_per_round": null,
+      "stress_multiplier": 20,
+      "target_runtime_budget": {
+        "ci_safe": false,
+        "ci_budget_seconds": null,
+        "full_budget_seconds": 600,
+        "schedule": "manual A/B run on feature branches"
+      }
+    }
+  ],
+  "commands": {
+    "bench": "zig build bench",
+    "bench-micro": "zig build bench-micro -- --rounds 10 --warmups 1 --out raw/",
+    "bench-integration": "zig build bench-integration -- --rounds 5 --warmups 1 --out raw/",
+    "bench-ci": "zig build bench-ci -- --out raw/",
+    "bench-smoke": "zig build bench-smoke",
+    "bench-ab": "bash scripts/ab_runner.sh",
+    "bench-compare": "python3 scripts/compare.py --dir raw/ --gate"
+  },
+  "ab_protocol": {
+    "baseline_ref": "9d77025",
+    "baseline_ref_note": "main HEAD at time of this design; no git tags exist in this repo",
+    "refuse_identical_refs": true,
+    "worktree_base": "docs/performance/ab-worktrees/",
+    "warmups": 1,
+    "rounds": 10,
+    "stress_multiplier": 20,
+    "variance_gate_multiplier": 3.0,
+    "fixed_floor_pct": 3.0,
+    "target_gain_pct": 5.0,
+    "max_regression_pct": -3.0,
+    "host_state_script": "scripts/host_state.sh",
+    "host_state_fields": ["cpu_model", "core_count", "mem_total_kb", "uname", "loadavg_before", "loadavg_after"]
+  },
+  "result_schema": {
+    "schema_version": "1",
+    "per_round_file_pattern": "raw/round_{NNN}.json",
+    "warmup_file_pattern": "raw/warmup_{NNN}.json",
+    "aggregate_file": "aggregate.json",
+    "ab_meta_file": "ab_run_meta.json",
+    "summary_line_prefix": "NATIVE_BENCH",
+    "summary_line_format": "NATIVE_BENCH result=<PASS|FAIL|BASELINE> scenarios=<N> regressions=<N> improvements=<N> ref_a=<sha8|none> ref_b=<sha8>"
+  },
+  "gating": {
+    "formula": "delta_pct = (candidate_median - baseline_median) / baseline_median * 100; effective_gate = max(stddev_a * variance_gate_multiplier, fixed_floor_pct * baseline_median / 100); REGRESSION if delta_pct < max_regression_pct AND abs(candidate_median - baseline_median) > effective_gate",
+    "variance_gate_multiplier": 3.0,
+    "fixed_floor_pct": 3.0,
+    "target_gain_pct": 5.0,
+    "max_regression_pct": -3.0,
+    "first_run_mode": "baseline — gate logic skipped; all scenario medians written as reference numbers; NATIVE_BENCH result=BASELINE"
+  },
+  "platform_coverage": {
+    "primary": "linux/x86_64",
+    "smoke_platforms": ["linux/x86_64", "darwin/arm64", "darwin/x86_64"],
+    "cpu_pin_linux": "taskset -c 0",
+    "cpu_pin_macos": "not available; log warning; raise variance_gate_multiplier to 5.0 for macOS runs"
+  },
+  "feature_flag_contract": {
+    "description": "Every optimization must expose a compile-time switch or build option that can disable the new path. ab_runner.sh must support --disable-flag <name> to set the option to its off-state for ref_b.",
+    "examples": [
+      {
+        "gap_id": "P-02",
+        "flag_name": "use_fast_varint",
+        "build_option": "-Duse-fast-varint=false",
+        "default": true
+      },
+      {
+        "gap_id": "P-01",
+        "flag_name": "use_single_pass_submessage",
+        "build_option": "-Duse-single-pass-submessage=false",
+        "default": true
+      },
+      {
+        "gap_id": "P-03",
+        "flag_name": "use_fast_tag_dispatch",
+        "build_option": "-Duse-fast-tag-dispatch=false",
+        "default": true
+      },
+      {
+        "gap_id": "P-04",
+        "flag_name": "use_inline_packed_write",
+        "build_option": "-Duse-inline-packed-write=false",
+        "default": true
+      },
+      {
+        "gap_id": "P-05",
+        "flag_name": "use_ensure_capacity_packed",
+        "build_option": "-Duse-ensure-capacity-packed=false",
+        "default": true
+      },
+      {
+        "gap_id": "P-08",
+        "flag_name": "use_fast_json_key_dispatch",
+        "build_option": "-Duse-fast-json-key-dispatch=false",
+        "default": true
+      },
+      {
+        "gap_id": "P-09",
+        "flag_name": "use_direct_json_encode",
+        "build_option": "-Duse-direct-json-encode=false",
+        "default": true
+      }
+    ]
+  },
+  "security_caps_active_in_bench": {
+    "note": "All security caps remain enabled during bench runs to measure representative production behaviour",
+    "max_decode_depth": 100,
+    "max_decode_alloc_per_field_bytes": 16777216,
+    "max_decode_elements": 1000000,
+    "max_dupe_depth": 100
+  }
+}

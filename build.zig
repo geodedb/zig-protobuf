@@ -183,28 +183,180 @@ pub fn build(b: *std.Build) !void {
 
     bootstrap.dependOn(&bootstrapConversion.step);
 
-    // Bench harness — forces ReleaseFast regardless of -Doptimize so the
-    // numbers are meaningful even when the user is iterating on tests in
-    // Debug. Run via `zig build bench`.
-    const bench_step = b.step("bench", "Run wire-decoder microbenchmarks");
+    // Bench harness — see docs/performance/2026-04-26-encode-decode-baseline/
+    // for the architecture and plan that drove this layout.
+    //
     // Default to ReleaseFast for meaningful numbers, but allow override
     // via `-Doptimize=Debug` for development. (As of Zig 0.16.0 the
     // compiler ICEs on ReleaseFast for this tiny exe; ReleaseSafe is
     // a safe default that still benefits from the compiler's
     // optimizations.)
+    // TODO: retry ReleaseFast on the next Zig point release.
     const bench_optimize: std.builtin.OptimizeMode = if (b.user_input_options.contains("optimize"))
         optimize
     else
         .ReleaseSafe;
-    const bench_exe = b.addExecutable(.{
-        .name = "bench",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("bench/main.zig"),
-            .target = target,
-            .optimize = bench_optimize,
-        }),
+
+    // Feature-flag build options — every optimization called out in
+    // docs/performance/2026-04-26-encode-decode-baseline/plan.json
+    // ("feature_flag_contract") gets a corresponding -D toggle so the
+    // AB runner can flip it off on the candidate ref to confirm the
+    // measured delta is actually caused by the optimization.
+    const opt_use_fast_varint = b.option(
+        bool,
+        "use-fast-varint",
+        "Enable the P-02 fast-path varint decoder (default: true)",
+    ) orelse true;
+    const opt_use_single_pass_submessage = b.option(
+        bool,
+        "use-single-pass-submessage",
+        "Enable the P-01 single-pass writeSubmessage (default: true)",
+    ) orelse true;
+    const opt_use_fast_tag_dispatch = b.option(
+        bool,
+        "use-fast-tag-dispatch",
+        "Enable the P-03 inline-for tag dispatch (default: true)",
+    ) orelse true;
+    const opt_use_inline_packed_write = b.option(
+        bool,
+        "use-inline-packed-write",
+        "Enable the P-04 inline packed-list writer (default: true)",
+    ) orelse true;
+    const opt_use_ensure_capacity_packed = b.option(
+        bool,
+        "use-ensure-capacity-packed",
+        "Enable the P-05 ensureTotalCapacity in decodeRepeated (default: true)",
+    ) orelse true;
+    const opt_use_fast_json_key_dispatch = b.option(
+        bool,
+        "use-fast-json-key-dispatch",
+        "Enable the P-08 fast JSON key dispatch (default: true)",
+    ) orelse true;
+    const opt_use_direct_json_encode = b.option(
+        bool,
+        "use-direct-json-encode",
+        "Enable the P-09 direct JSON encode (default: true)",
+    ) orelse true;
+
+    // Generated message modules used by integration scenarios. The
+    // bench exe needs `vector_tile.pb.zig` and `graphics.pb.zig`,
+    // which already live under tests/generated/ from the test build.
+    // Both depend on the public `protobuf` module.
+    const vector_tile_module = b.createModule(.{
+        .root_source_file = b.path("tests/generated/vector_tile.pb.zig"),
+        .target = target,
+        .optimize = bench_optimize,
     });
-    bench_exe.root_module.addImport("protobuf", module);
-    const run_bench = b.addRunArtifact(bench_exe);
-    bench_step.dependOn(&run_bench.step);
+    vector_tile_module.addImport("protobuf", module);
+
+    const graphics_module = b.createModule(.{
+        .root_source_file = b.path("tests/generated/graphics.pb.zig"),
+        .target = target,
+        .optimize = bench_optimize,
+    });
+    graphics_module.addImport("protobuf", module);
+
+    // Per-step bench executables: each gets its own build_options
+    // module so that a layer-filter constant baked into bench/main.zig
+    // can dispatch to the right scenarios. Sharing one exe wouldn't
+    // work because Zig's build_options are per-module.
+    const BenchExeSpec = struct {
+        step_name: []const u8,
+        description: []const u8,
+        layer_label: []const u8,
+        argv: []const []const u8,
+    };
+    const bench_specs = [_]BenchExeSpec{
+        .{
+            .step_name = "bench-micro",
+            .description = "Run micro bench layer (deterministic byte literals, zero-alloc probes)",
+            .layer_label = "micro",
+            .argv = &.{ "--rounds", "10", "--warmups", "1", "--out", "raw/" },
+        },
+        .{
+            .step_name = "bench-integration",
+            .description = "Run integration bench layer (real fixtures, allocator active)",
+            .layer_label = "integration",
+            .argv = &.{ "--rounds", "5", "--warmups", "1", "--out", "raw/" },
+        },
+        .{
+            .step_name = "bench-ci",
+            .description = "Run micro + CI-safe integration in one shot (< 60s)",
+            .layer_label = "all",
+            .argv = &.{ "--rounds", "10", "--warmups", "1", "--out", "raw/" },
+        },
+        .{
+            .step_name = "bench-smoke",
+            .description = "One-round smoke pass over every scenario (no output files)",
+            .layer_label = "smoke",
+            .argv = &.{},
+        },
+    };
+
+    inline for (bench_specs) |spec| {
+        const step = b.step(spec.step_name, spec.description);
+
+        const bo = b.addOptions();
+        bo.addOption(bool, "use_fast_varint", opt_use_fast_varint);
+        bo.addOption(bool, "use_single_pass_submessage", opt_use_single_pass_submessage);
+        bo.addOption(bool, "use_fast_tag_dispatch", opt_use_fast_tag_dispatch);
+        bo.addOption(bool, "use_inline_packed_write", opt_use_inline_packed_write);
+        bo.addOption(bool, "use_ensure_capacity_packed", opt_use_ensure_capacity_packed);
+        bo.addOption(bool, "use_fast_json_key_dispatch", opt_use_fast_json_key_dispatch);
+        bo.addOption(bool, "use_direct_json_encode", opt_use_direct_json_encode);
+        bo.addOption([]const u8, "bench_layer", spec.layer_label);
+
+        const bench_exe = b.addExecutable(.{
+            .name = spec.step_name,
+            .root_module = b.createModule(.{
+                .root_source_file = b.path("bench/main.zig"),
+                .target = target,
+                .optimize = bench_optimize,
+            }),
+        });
+        bench_exe.root_module.addImport("protobuf", module);
+        bench_exe.root_module.addImport("vector_tile.pb.zig", vector_tile_module);
+        bench_exe.root_module.addImport("graphics.pb.zig", graphics_module);
+        bench_exe.root_module.addImport("build_options", bo.createModule());
+
+        const run = b.addRunArtifact(bench_exe);
+        if (spec.argv.len > 0) run.addArgs(spec.argv);
+        if (b.args) |user_args| run.addArgs(user_args);
+
+        step.dependOn(&run.step);
+    }
+
+    // Legacy `zig build bench` — keep it as an alias of bench-micro so
+    // the smoke command from the prior README still works.
+    const legacy_step = b.step("bench", "Alias for bench-micro (legacy entry point)");
+    {
+        const bo = b.addOptions();
+        bo.addOption(bool, "use_fast_varint", opt_use_fast_varint);
+        bo.addOption(bool, "use_single_pass_submessage", opt_use_single_pass_submessage);
+        bo.addOption(bool, "use_fast_tag_dispatch", opt_use_fast_tag_dispatch);
+        bo.addOption(bool, "use_inline_packed_write", opt_use_inline_packed_write);
+        bo.addOption(bool, "use_ensure_capacity_packed", opt_use_ensure_capacity_packed);
+        bo.addOption(bool, "use_fast_json_key_dispatch", opt_use_fast_json_key_dispatch);
+        bo.addOption(bool, "use_direct_json_encode", opt_use_direct_json_encode);
+        bo.addOption([]const u8, "bench_layer", "micro");
+
+        const legacy_bench_exe = b.addExecutable(.{
+            .name = "bench",
+            .root_module = b.createModule(.{
+                .root_source_file = b.path("bench/main.zig"),
+                .target = target,
+                .optimize = bench_optimize,
+            }),
+        });
+        legacy_bench_exe.root_module.addImport("protobuf", module);
+        legacy_bench_exe.root_module.addImport("vector_tile.pb.zig", vector_tile_module);
+        legacy_bench_exe.root_module.addImport("graphics.pb.zig", graphics_module);
+        legacy_bench_exe.root_module.addImport("build_options", bo.createModule());
+
+        const run = b.addRunArtifact(legacy_bench_exe);
+        run.addArgs(&.{ "--rounds", "1", "--warmups", "0", "--out", "raw/" });
+        if (b.args) |user_args| run.addArgs(user_args);
+
+        legacy_step.dependOn(&run.step);
+    }
 }

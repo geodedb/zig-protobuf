@@ -181,7 +181,7 @@ pub fn fd(comptime field_number: ?u32, comptime ftype: FieldType) FieldDescripto
 /// so anything can be cast to it by definition. Buffers the encoded
 /// bytes on the stack and emits them with a single `writer.writeAll`
 /// to avoid one writer-vtable dispatch per byte (P-07).
-fn writeRawVarint(writer: anytype, value: u64) !void {
+pub fn writeRawVarint(writer: anytype, value: u64) !void {
     var buf: [10]u8 = undefined;
     var n: usize = 0;
     var copy = value;
@@ -250,7 +250,7 @@ fn writeVarint(
 /// Takes care of casting any signed/float value to an appropriate unsigned
 /// type, then emits the little-endian bytes with a single `writer.writeAll`
 /// to avoid one writer-vtable dispatch per byte (P-07).
-fn writeFixed(writer: anytype, value: anytype) !void {
+pub fn writeFixed(writer: anytype, value: anytype) !void {
     const bitsize = @bitSizeOf(@TypeOf(value));
     const byte_count = bitsize / 8;
 
@@ -749,7 +749,7 @@ fn dupeField(
                 .scalar => |scalar| switch (scalar) {
                     .string, .bytes => {
                         for (@field(original, field_name).items) |item| {
-                            list.appendAssumeCapacity(try item.dupe(allocator));
+                            list.appendAssumeCapacity(try allocator.dupe(u8, item));
                         }
                     },
                     else => {
