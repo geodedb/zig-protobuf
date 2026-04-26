@@ -1,7 +1,3 @@
-const std = @import("std");
-const testing = std.testing;
-const unittest = @import("./generated/unittest.pb.zig");
-
 test {
     _ = @import("./oneof.zig");
     _ = @import("./mapbox.zig");
