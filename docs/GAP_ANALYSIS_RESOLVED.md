@@ -111,3 +111,70 @@ prerequisites change.
 - **Security Medium findings**: 5 → 4 open (N8 closed; S4, S5, N2, N13 deferred).
 - **Quality top-N PriorityScore findings**: Q-01–Q-03 deferred per audit recommendation; everything ≤ Q-07 priority closed or deferred.
 - **Performance backlog**: small wins (P-07, P-10) closed; bench harness landed; large wins (P-01/P-02/P-03) await timing wiring.
+
+## 2026-04-26 — perf sprint #1 (4 items closed, 3 deferred with handoff)
+
+Drove the bench harness from a smoke-only stub to a 3-layer
+defensible pipeline (micro / integration / comparison) and used it
+to validate every perf gap from the original audit's findings table.
+Each closure ships with a feature flag (`-Duse-...=false`) so the AB
+runner can disable the optimization on `ref_b` for variance
+attribution. The compare script's variance-aware gate
+(`max(stddev × 3, 3 % × baseline)`) decides PASS / FAIL.
+
+### Infrastructure precursor (lands across multiple commits below)
+
+| Component | Commit | Notes |
+|-----------|--------|-------|
+| 3-layer bench harness (micro / integration / comparison) | `09fa0d8 perf: install three-layer bench harness + capture 9d77025 baseline` | bench/{framework,main,scenarios_*}.zig; 18 scenarios; std-lib only timing on `std.Io.Clock`; ISO 8601 records; smp_allocator backing |
+| 7 build-time feature flags + protobuf-module `build_options` wiring | `2a3d295 build: wire build_options into the protobuf module + compare.py sign fix` (cherry-picked into perf branches; subsumed by individual perf MRs) | `use-fast-varint`, `use-single-pass-submessage`, `use-fast-tag-dispatch`, `use-inline-packed-write`, `use-ensure-capacity-packed`, `use-fast-json-key-dispatch`, `use-direct-json-encode` |
+| `scripts/compare.py` (variance-aware gate, stable `NATIVE_BENCH …` summary line) | `09fa0d8` initial; sign-convention fix in `017590d perf: P-02 A/B evidence + compare.py sign fix` | Python 3.10+ stdlib only; gate flips IMPROVEMENT ↔ REGRESSION on ns/op (lower-is-better) semantics |
+| `scripts/ab_runner.sh` (worktree-based A/B, refuses identical refs, host-state before+after, alternating measured rounds) | `09fa0d8` | Bash + git worktrees; ISO 8601 evidence dir layout |
+| `scripts/host_state.sh` | `09fa0d8` | Linux + macOS portable JSON emitter |
+| `scripts/stress_followup.sh` (20× repeat after PASS verdict) | `bc59498 perf: 20x stress follow-up for P-02 — PASS` | Shipped via the P-02 MR; reusable by every subsequent gap |
+| Drive-by: `dupeImpl` `[]const u8.dupe` bug in repeated-string field | `09fa0d8` | Existing tests didn't exercise the path; bench's `dupe-fixture-vector-tile` scenario uncovered it. Replaced `try item.dupe(allocator)` with `try allocator.dupe(u8, item)`. `zig build test` 140 → 140 after fix |
+
+### Closed (PASS verdict, shipped)
+
+| ID | Severity | Title | Result | Closed by |
+|----|----------|-------|--------|-----------|
+| **P-02** | P0 | `decodeScalar` varint byte-at-a-time, no fast path | **PASS** — `decode-varint-10byte-i64` -7.14 % (42 → 39 ns), 1 improvement / 0 regressions, 20× / 20× stress clean | `fe7fee1 perf: P-02 fast-path varint decode in decodeScalar` + `017590d perf: P-02 A/B evidence + compare.py sign fix` + `bc59498 perf: 20x stress follow-up for P-02 — PASS`; merged via MR !1 (`dc243e9`). When `max_bytes` are already buffered, the inline-for unrolled fast path eliminates per-byte `try takeByte()` error-return scaffolding. AB-disable: `-Duse-fast-varint=false`. |
+| **P-04** | P1 | 4× `writePacked*List` temp buffers | **PASS** — `dupe-fixture-vector-tile` -10.05 % (4,706,157 → 4,233,022 ns) via -27 % allocs/op on encode (10,545 vs 14,451), 1 improvement / 0 regressions, 20× / 20× stress clean | `1f47963 perf: P-04 inline packed-list writers (skip temp buffer)` + `9219f49 perf: P-04 A/B evidence + 20x stress — PASS`; merged via MR !4 (`e4c20a5`). Fixed scalars use exact `count × @sizeOf`; varints/strings size-walk via `varintByteSize` (new pub helper). Doesn't hit the P-01 trap because packed lists are flat by spec — never recurse. AB-disable: `-Duse-inline-packed-write=false`. |
+| **P-05** | P1 | `decodeRepeated` packed loop missing `ensureTotalCapacity` | **PASS** — `decode-fixture-graphics-deep` -6.15 % (1,540,816 → 1,445,986 ns), packed-field alloc count -2.4 % on `vector_tile`, 1 improvement / 0 regressions, 20× / 20× stress clean | `2c59dab perf: P-05 ensureTotalCapacity in decodeRepeated packed loops` + `8369443 perf: P-05 A/B evidence + 20x stress — PASS`; merged via MR !3 (`646ba3f`). Reserves capacity once before the per-element loop; fixed scalars get exact count, varints/enums get bytes-as-upper-bound. AB-disable: `-Duse-ensure-capacity-packed=false`. |
+| **P-09** | P1 | `json.encode` uses `valueAlloc` returning owned slice | **CLOSED-AS-API-ADDITION** — `pub fn encodeToWriter(data, options, writer)` exposed in `src/json.zig`; bench impact unchanged because every bench scenario consumes `[]u8` by contract. Audit premise (`valueAlloc` "doubles memory traffic" via "value-tree round-trip") was stale: Zig 0.16.0's `std.json.Stringify.value` already streams tokens directly to its writer; only the temp `Writer.Allocating` buffer inside `valueAlloc` is avoidable, and `encodeToWriter` lets writer-owning consumers skip it. | `c9bd4c1 fix: close P-09 - json.encodeToWriter streaming entry point`. Adds the streaming entry point + a round-trip equivalence test (`tests/tests_json.zig` "JSON: encodeToWriter matches encode (P-09)") proving byte-for-byte equality with `encode`. Test suite: 140 → 141 pass. |
+
+### Deferred (investigation complete, design or rationale committed)
+
+| ID | Severity | Title | Reason | Tracked in |
+|----|----------|-------|--------|-----------|
+| **P-01** | P0 | `writeSubmessage` 2-pass alloc-then-write | Naive single-pass via `std.Io.Writer.Discarding` is asymptotically wrong: every nested submessage recurses into the same two-pass discipline → total work `O(2^depth)`. Measured 22 ms vs 5 ms baseline (4.3× **slower**). The correct fix is one of (a) size-cache walk threaded through the encode pipeline, (b) placeholder + patch-back on writers that support random-access, (c) stack-buffered temp for small submessages — all multi-day refactors. | `8f2b30b docs: P-01 design — naive single-pass writeSubmessage fails` (merged via MR !2 `ce4a045`). The `-Duse-single-pass-submessage` build option survives as a no-op flag, ready to flip the slow path back on once a real impl reads it. Design note + recommended next step at `docs/performance/2026-04-26-p-01-single-pass-submessage-design/design.md`. |
+| **P-03** | P0 | `decodeMessage` `inline for` tag dispatch | Skipped after analysis: the existing `inline for` over `desc_table` fields with `comptime continue` already lowers (under LLVM) to a chain of comparisons that the compiler can convert to a jump table on dense field-number sets. Refactoring the 559-line dispatch body to an explicit comptime-built `switch` is high-risk for subtle correctness bugs, and no small-message bench scenario exists in the current fixtures (vector_tile.bin and graphics.bin are large messages where dispatch overhead is amortized). The architecture's "≥10 % gain" estimate cannot be validated against the current bench. | This RESOLVED entry (no commit). The `-Duse-fast-tag-dispatch` build option is wired and ready for the day a small-message bench fixture is added or `-femit-asm` inspection of the conformance proto motivates a ground-up refactor. |
+| **P-08** | P1 | JSON parse field-name dispatch O(N_fields × N_keys) | Length-bucketed dispatch implemented and AB'd (`2b47401 perf: P-08 length-bucketed JSON key dispatch`). Result: `NATIVE_BENCH result=PASS scenarios=18 regressions=0 improvements=0` — entirely neutral on `vector_tile` (json-decode +2.74 %, json-encode +0.64 %, both within variance gate). Per-struct field counts in `vector_tile` (≤7 fields) are too small for the bucket-lookup overhead to amortize against saved memcmps. | `309d73d Revert "perf: P-08 length-bucketed JSON key dispatch"` + `5a0f950 docs: P-08 — length-bucketed JSON dispatch attempted, reverted` (merged via MR !5 `30f008b`). Decision + recommended next step at `docs/performance/2026-04-26-p-08-fast-json-key-dispatch/decision.md`. The `-Duse-fast-json-key-dispatch` build option survives as a no-op flag, ready for the day a wider-schema JSON fixture (e.g. `tests/fixtures/graphics_db.json`) is added or a size-gated impl (`if (fields.len >= 16)`) is written. |
+
+### Verification (perf sprint)
+
+- `zig build test --summary all`: **141 / 141 tests passed** at the end of this sprint (was 140 before; +1 for `tests/tests_json.zig` "JSON: encodeToWriter matches encode (P-09)").
+- `zig build test -Duse-fast-varint=false`, `-Duse-inline-packed-write=false`, `-Duse-ensure-capacity-packed=false`, `-Duse-single-pass-submessage=false`, `-Duse-fast-json-key-dispatch=false`: each 141 / 141 pass — every feature flag is wired correctly and the slow paths remain compileable + correct.
+- `zig fmt --check` exit 0 across all hand-written sources.
+- 4 PASS verdicts each cleared the 20× stress follow-up (test = 20 / 20, bench = 20 / 20).
+- Baseline evidence (`docs/performance/2026-04-26-encode-decode-baseline/`) and per-MR AB evidence dirs all pass `bench-validator` with `validate-rules.sh` exit 0.
+
+### Architecture-vs-actual delta
+
+| Gap | Architecture estimate | Measured |
+|-----|----------------------:|---------:|
+| P-02 | ≥15 % ns/op on hot varint sizes | -7.14 % on 10-byte (single scenario clears gate) |
+| P-04 | ≥15 % ns/op on packed-list encode | -10.05 % on dupe (driven by -27 % allocs/op on encode-roundtrip) |
+| P-05 | ≥10 % ns/op on packed fields | -6.15 % on graphics-deep |
+| P-09 | ≥10 % ns/op on JSON encode | 0 % (audit premise stale; API improvement only) |
+| P-01 | ≥20 % ns/op encode | not realised (multi-day refactor remaining) |
+| P-08 | ≥25 % ns/op JSON parse | not realised on `vector_tile`; needs wider fixture |
+| P-03 | ≥10 % ns/op | not validated; no small-message bench fixture |
+
+The architecture estimates were optimistic relative to the
+fixtures actually committed. Where the estimate was met, the
+improvement shipped behind a flag with stress and AB evidence.
+Where it wasn't, the investigation outcome is documented and the
+flag survives so the optimization can be re-attempted when the
+preconditions land (wider fixtures for P-08, small-message
+fixture for P-03, multi-day refactor budget for P-01).

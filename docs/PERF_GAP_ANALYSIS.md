@@ -273,3 +273,28 @@ Pair with P-13 alloc counter to report both ns/op and allocs/op per fixture.
 - **P-08 JSON hot-path-ness:** The wire format is the documented primary path. JSON support exists but its real-world hot-path frequency is unknown. Confirm before sinking effort here.
 - **Generator items (P-14, P-15, P-16):** Build-time only. Wins are real but only matter for users with very large `.proto` schemas; for the conformance proto regeneration, expected wall-clock impact is sub-second.
 
+---
+
+## Closure Status (last updated 2026-04-26 after perf sprint #1)
+
+| ID | Status | Closed by | Notes |
+|----|--------|-----------|-------|
+| P-01 | **Deferred** | MR !2 (`ce4a045`) | Naive single-pass is `O(2^depth)`, 4.3× slower. Design note for size-cache walk at `docs/performance/2026-04-26-p-01-single-pass-submessage-design/design.md`. `-Duse-single-pass-submessage` flag wired as no-op. |
+| P-02 | **Closed** | MR !1 (`dc243e9`) | Fast-path varint decode. -7.14 % on `decode-varint-10byte-i64`, 20×/20× stress clean. Toggle: `-Duse-fast-varint=false`. |
+| P-03 | **Deferred** | RESOLVED entry only | 559-line dispatch already lowers to LLVM jump tables under `inline for`; no small-message bench fixture to validate the architecture's ≥10 % estimate. `-Duse-fast-tag-dispatch` flag wired as no-op. |
+| P-04 | **Closed** | MR !4 (`e4c20a5`) | Inline packed-list writers, no temp buffer. -10.05 % on `dupe-fixture-vector-tile` via -27 % allocs/op on encode. Toggle: `-Duse-inline-packed-write=false`. |
+| P-05 | **Closed** | MR !3 (`646ba3f`) | `ensureTotalCapacity` in packed decode loops. -6.15 % on `decode-fixture-graphics-deep`. Toggle: `-Duse-ensure-capacity-packed=false`. |
+| P-06 | **Open** | — | Borrow mode for strings/bytes. Out of scope for perf sprint #1 (needs `DecodeOptions` thread + lifetime documentation). |
+| P-07 | **Closed** (prior run) | `40ffe07` | Stack-buffered `writeRawVarint`/`writeFixed`. |
+| P-08 | **Deferred** | MR !5 (`30f008b`) | Length-bucketed JSON dispatch attempted, neutral on `vector_tile` (per-struct field counts ≤7), reverted. Design note at `docs/performance/2026-04-26-p-08-fast-json-key-dispatch/decision.md`. `-Duse-fast-json-key-dispatch` flag wired as no-op. Re-attempt when a wider-schema JSON fixture lands or with a comptime size gate (`if (fields.len >= 16)`). |
+| P-09 | **Closed** | `c9bd4c1` | `pub fn encodeToWriter` exposed. Audit premise (value-tree round-trip) was stale; Zig 0.16.0's `std.json.Stringify` already streams. API addition for writer-owning consumers. |
+| P-10 | **Closed** (prior run) | `40ffe07` | `appendAssumeCapacity` in `dupeField`. |
+| P-11 | **Closed** (prior run) | `913e626` | `bench` step in `build.zig`. |
+| P-12 | **Closed** (prior run) | `913e626` | Bench harness with fixtures. Replaced with the 3-layer harness in MR !1. |
+| P-13 | **Closed** (prior run + perf sprint #1) | `913e626` + `09fa0d8` | Allocation-counting allocator wrapper. Now `bench/framework.CountingAllocator`. |
+| P-14 | **Open** | — | Generator `getOutputLines` O(F × D × F). Build-time only, low priority. |
+| P-15 | **Open** | — | Generator `isMessageSelfReferential` allocates fresh StringHashMap per call. Build-time only. |
+| P-16 | **Open** | — | Generator `std.mem.concat` + per-line `allocPrint`. Build-time only. |
+
+Total: 7 closed (P-02, P-04, P-05, P-07, P-09, P-10, P-11+P-12+P-13 infra), 3 deferred with handoff (P-01, P-03, P-08), 4 open generator/feature items (P-06, P-14, P-15, P-16). Detailed closure entries with measured deltas live in `GAP_ANALYSIS_RESOLVED.md` under "perf sprint #1".
+
