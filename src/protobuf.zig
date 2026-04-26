@@ -1,7 +1,5 @@
 const std = @import("std");
 
-const log = std.log.scoped(.zig_protobuf);
-
 pub const json = @import("json.zig");
 pub const wire = @import("wire.zig");
 
