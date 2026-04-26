@@ -1,7 +1,17 @@
 const std = @import("std");
+const build_options = @import("build_options");
 
 pub const json = @import("json.zig");
 pub const wire = @import("wire.zig");
+
+/// Compile-time switch for the P-04 inline packed-list writers. When
+/// true, `writePackedFixedList`, `writePackedVarintList`,
+/// `writePackedEnumList`, and `writePackedStringList` compute the
+/// payload size up-front (O(1) for fixed-width scalars, O(N) for
+/// varints/strings) and write the length prefix + body directly into
+/// the destination, skipping the per-call `std.Io.Writer.Allocating`
+/// temp buffer. AB-disable via `-Duse-inline-packed-write=false`.
+pub const use_inline_packed_write: bool = build_options.use_inline_packed_write;
 
 /// Error set returned by decode helpers when the input is malformed or
 /// truncated. `NotEnoughData` indicates an unexpected end of buffer
@@ -176,6 +186,22 @@ pub fn fd(comptime field_number: ?u32, comptime ftype: FieldType) FieldDescripto
 
 // encoding
 
+/// Number of bytes the varint encoding of `value` consumes. Used by
+/// the P-04 inline packed-list writers to size the length prefix
+/// without first encoding into a temp buffer.
+pub fn varintByteSize(value: u64) usize {
+    if (value < (@as(u64, 1) << 7)) return 1;
+    if (value < (@as(u64, 1) << 14)) return 2;
+    if (value < (@as(u64, 1) << 21)) return 3;
+    if (value < (@as(u64, 1) << 28)) return 4;
+    if (value < (@as(u64, 1) << 35)) return 5;
+    if (value < (@as(u64, 1) << 42)) return 6;
+    if (value < (@as(u64, 1) << 49)) return 7;
+    if (value < (@as(u64, 1) << 56)) return 8;
+    if (value < (@as(u64, 1) << 63)) return 9;
+    return 10;
+}
+
 /// Writes an unsigned varint value.
 /// Awaits a u64 value as it's the biggest unsigned varint possible,
 /// so anything can be cast to it by definition. Buffers the encoded
@@ -195,6 +221,39 @@ pub fn writeRawVarint(writer: anytype, value: u64) !void {
     try writer.writeAll(buf[0..n]);
 }
 
+/// Convert a typed scalar value into the u64 representation that
+/// `writeRawVarint` consumes. Centralises the zigzag/sign-extend/
+/// unsigned-cast logic that `writeAsVarint` and the P-04 inline
+/// packed-list size computation both need.
+fn scalarToVarintU64(
+    int: anytype,
+    comptime scalar_type: FieldType.Scalar,
+) u64 {
+    if (comptime scalar_type.isZigZag()) {
+        return wire.ZigZag.encode(int);
+    }
+
+    const Int = @TypeOf(int);
+    const int_ti = @typeInfo(Int);
+    switch (comptime int_ti) {
+        .int => |i| {
+            if (comptime i.signedness == .signed) {
+                return @bitCast(@as(i64, @intCast(int)));
+            } else {
+                return @as(u64, @intCast(int));
+            }
+        },
+        .comptime_int => {
+            if (comptime int < 0) {
+                return @bitCast(@as(i64, @intCast(int)));
+            } else {
+                return @as(u64, @intCast(int));
+            }
+        },
+        else => unreachable,
+    }
+}
+
 /// Writes a varint.
 /// Mostly does the required transformations to use writeRawVarint
 /// after making the value some kind of unsigned value.
@@ -203,33 +262,7 @@ fn writeAsVarint(
     int: anytype,
     comptime scalar_type: FieldType.Scalar,
 ) !void {
-    const val: u64 = blk: {
-        if (comptime scalar_type.isZigZag()) {
-            break :blk wire.ZigZag.encode(int);
-        }
-
-        const Int = @TypeOf(int);
-        const int_ti = @typeInfo(Int);
-        switch (comptime int_ti) {
-            .int => |i| {
-                if (comptime i.signedness == .signed) {
-                    break :blk @bitCast(@as(i64, @intCast(int)));
-                } else {
-                    break :blk @as(u64, @intCast(int));
-                }
-            },
-            .comptime_int => {
-                if (comptime int < 0) {
-                    break :blk @bitCast(@as(i64, @intCast(int)));
-                } else {
-                    break :blk @as(u64, @intCast(int));
-                }
-            },
-            else => unreachable,
-        }
-    };
-
-    try writeRawVarint(writer, val);
+    try writeRawVarint(writer, scalarToVarintU64(int, scalar_type));
 }
 
 /// Write a value of any complex type that can be transfered as a varint
@@ -310,6 +343,20 @@ fn writePackedFixedList(
         // first append the tag for the field descriptor
         try writeTag(writer, field);
 
+        if (comptime use_inline_packed_write) {
+            // P-04 fast path: fixed-width elements. Total payload
+            // size is exactly `count * sizeof(elem)`; emit the
+            // length prefix and write each element directly into
+            // the destination writer.
+            const elem_size = comptime @sizeOf(@TypeOf(value_list.items[0]));
+            const size_encoded: u64 = @as(u64, value_list.items.len) * @as(u64, elem_size);
+            try writeRawVarint(writer, size_encoded);
+            for (value_list.items) |item| {
+                try writeFixed(writer, item);
+            }
+            return;
+        }
+
         var w: std.Io.Writer.Allocating = .init(allocator);
         defer w.deinit();
 
@@ -337,6 +384,19 @@ fn writePackedVarintList(
     if (value_list.items.len > 0) {
         try writeTag(writer, field);
 
+        if (comptime use_inline_packed_write) {
+            // P-04 fast path: walk once to size, write once direct.
+            var size_encoded: u64 = 0;
+            for (value_list.items) |item| {
+                size_encoded += varintByteSize(scalarToVarintU64(item, scalar_type));
+            }
+            try writeRawVarint(writer, size_encoded);
+            for (value_list.items) |item| {
+                try writeVarint(writer, item, scalar_type);
+            }
+            return;
+        }
+
         var w: std.Io.Writer.Allocating = .init(allocator);
         defer w.deinit();
 
@@ -358,6 +418,19 @@ fn writePackedEnumList(
 ) !void {
     if (value_list.items.len > 0) {
         try writeTag(writer, field);
+
+        if (comptime use_inline_packed_write) {
+            var size_encoded: u64 = 0;
+            for (value_list.items) |item| {
+                const u: u64 = @bitCast(@as(i64, @intFromEnum(item)));
+                size_encoded += varintByteSize(u);
+            }
+            try writeRawVarint(writer, size_encoded);
+            for (value_list.items) |item| {
+                try writeRawVarint(writer, @bitCast(@as(i64, @intFromEnum(item))));
+            }
+            return;
+        }
 
         var w: std.Io.Writer.Allocating = .init(allocator);
         defer w.deinit();
@@ -394,6 +467,23 @@ fn writePackedStringList(
 ) !void {
     if (value_list.items.len > 0) {
         try writeTag(writer, field);
+
+        if (comptime use_inline_packed_write) {
+            // P-04 fast path: each entry is `varint(len) + len bytes`.
+            // Walk once for size, then write each entry directly.
+            var size_encoded: u64 = 0;
+            for (value_list.items) |item| {
+                const slice = item.getSlice();
+                size_encoded += varintByteSize(@as(u64, slice.len)) + slice.len;
+            }
+            try writeRawVarint(writer, size_encoded);
+            for (value_list.items) |item| {
+                const slice = item.getSlice();
+                try writeRawVarint(writer, @as(u64, slice.len));
+                try writer.writeAll(slice);
+            }
+            return;
+        }
 
         var temp_buffer: std.ArrayListUnmanaged(u8) = .empty;
         defer temp_buffer.deinit(allocator);
