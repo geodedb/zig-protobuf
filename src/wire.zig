@@ -13,6 +13,15 @@ const build_options = @import("build_options");
 /// docs/performance/2026-04-26-encode-decode-baseline/architecture.md
 /// §9 ("A/B feature-flag contract").
 pub const use_fast_varint: bool = build_options.use_fast_varint;
+
+/// Compile-time switch for the P-05 packed-decode `ensureTotalCapacity`
+/// preallocation. When true (the default), `decodeRepeated`'s packed
+/// branches reserve list capacity once based on the length-prefix
+/// before entering the per-element loop, eliminating per-element
+/// reallocs. When false, each `append` may grow the list, which is
+/// the original quadratic-realloc behavior. AB-disable via
+/// `-Duse-ensure-capacity-packed=false`.
+pub const use_ensure_capacity_packed: bool = build_options.use_ensure_capacity_packed;
 const log = if (builtin.os.tag != .freestanding) std.log.scoped(.zig_protobuf) else struct {
     // no-op log implementation for freestanding targets
     pub fn debug(
@@ -499,6 +508,25 @@ pub fn decodeRepeated(
             }
             // Packed repeated scalar.
             else if (options.bytes) |bytes| {
+                if (comptime use_ensure_capacity_packed) {
+                    // Reserve list capacity once. For fixed-width
+                    // scalars the count is exact; for variable-width
+                    // scalars the lower bound (each varint is at
+                    // least 1 byte) is a conservative upper bound on
+                    // the element count and avoids per-element
+                    // reallocs without over-allocating beyond the
+                    // raw payload size already in memory.
+                    const expected_count: usize = if (comptime scalar.isFixed()) blk: {
+                        const elem_size = @sizeOf(scalar.toType());
+                        break :blk if (elem_size == 0) bytes else bytes / elem_size;
+                    } else bytes;
+                    if (expected_count > max_decode_elements) {
+                        @branchHint(.cold);
+                        return error.InvalidInput;
+                    }
+                    try result.ensureTotalCapacity(allocator, result.items.len + expected_count);
+                }
+
                 var consumed: usize = 0;
                 while (consumed < bytes) {
                     const decoded, const c = try decodeScalar(scalar, reader);
@@ -530,6 +558,17 @@ pub fn decodeRepeated(
         .@"enum" => {
             // Packed repeated enum.
             if (options.bytes) |bytes| {
+                if (comptime use_ensure_capacity_packed) {
+                    // Enums are varint-encoded, so each element is
+                    // 1-10 bytes. Use the minimum-element upper
+                    // bound on count to avoid per-element reallocs.
+                    if (bytes > max_decode_elements) {
+                        @branchHint(.cold);
+                        return error.InvalidInput;
+                    }
+                    try result.ensureTotalCapacity(allocator, result.items.len + bytes);
+                }
+
                 var consumed: usize = 0;
                 while (consumed < bytes) {
                     const raw, const c = try decodeScalar(.int32, reader);

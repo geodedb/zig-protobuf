@@ -1,0 +1,39 @@
+{
+  "schema_version": "1",
+  "scenario_id": "encode-fixture-vector-tile-roundtrip",
+  "layer": "integration",
+  "language": "zig",
+  "variant": "A",
+  "git_sha": "stress14",
+  "command": "zig build bench-integration -- --scenario encode-fixture-vector-tile-roundtrip",
+  "timestamp": "2026-04-26T21:35:17Z",
+  "os": "linux",
+  "arch": "x86_64",
+  "runtime_version": "zig 0.16.0",
+  "warmups": 0,
+  "rounds": 1,
+  "round": 0,
+  "warmup": false,
+  "iterations": 1,
+  "metrics": {
+    "ns_per_op_median": 5538275,
+    "ns_per_op_p50": 5538275,
+    "ns_per_op_p95": 5538275,
+    "ns_per_op_p99": 5538275,
+    "ns_per_op_stddev": 0,
+    "ns_per_op_min": 5538275,
+    "ns_per_op_max": 5538275
+  },
+  "samples": [5538275],
+  "counters": {
+    "alloc_delta_bytes": 0,
+    "allocs_per_op": 14451,
+    "input_bytes": 128000,
+    "bytes_per_op": 0,
+    "zero_alloc_observed": true,
+    "zero_alloc_expected": false,
+    "alloc_assertion": "pass",
+    "alloc_threshold_bytes": 0,
+    "concurrency_shape": "N=1"
+  }
+}

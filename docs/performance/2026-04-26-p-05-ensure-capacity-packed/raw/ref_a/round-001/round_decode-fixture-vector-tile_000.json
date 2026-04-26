@@ -1,0 +1,39 @@
+{
+  "schema_version": "1",
+  "scenario_id": "decode-fixture-vector-tile",
+  "layer": "integration",
+  "language": "zig",
+  "variant": "A",
+  "git_sha": "ce4a04584b88acc78fbd5c53b54cef61dc1b434e",
+  "command": "zig build bench-integration -- --scenario decode-fixture-vector-tile",
+  "timestamp": "2026-04-26T21:32:38Z",
+  "os": "linux",
+  "arch": "x86_64",
+  "runtime_version": "zig 0.16.0",
+  "warmups": 0,
+  "rounds": 1,
+  "round": 0,
+  "warmup": false,
+  "iterations": 1,
+  "metrics": {
+    "ns_per_op_median": 4258930,
+    "ns_per_op_p50": 4258930,
+    "ns_per_op_p95": 4258930,
+    "ns_per_op_p99": 4258930,
+    "ns_per_op_stddev": 0,
+    "ns_per_op_min": 4258930,
+    "ns_per_op_max": 4258930
+  },
+  "samples": [4258930],
+  "counters": {
+    "alloc_delta_bytes": 0,
+    "allocs_per_op": 5342,
+    "input_bytes": 128000,
+    "bytes_per_op": 0,
+    "zero_alloc_observed": true,
+    "zero_alloc_expected": false,
+    "alloc_assertion": "pass",
+    "alloc_threshold_bytes": 0,
+    "concurrency_shape": "N=1"
+  }
+}
