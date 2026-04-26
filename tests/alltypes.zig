@@ -9,14 +9,6 @@ const jspb = @import("./generated/jspb/test.pb.zig");
 const unittest = @import("./generated/unittest.pb.zig");
 const longName = @import("./generated/some/really/long/name/which/does/not/really/make/any/sense/but/sometimes/we/still/see/stuff/like/this.pb.zig");
 
-pub fn printAllDecoded(input: []const u8) !void {
-    var iterator = protobuf.WireDecoderIterator{ .input = input };
-    std.debug.print("Decoding: {s}\n", .{std.fmt.fmtSliceHexUpper(input)});
-    while (try iterator.next()) |extracted_data| {
-        std.debug.print("  {any}\n", .{extracted_data});
-    }
-}
-
 test "long package" {
     // - this test allocates an object only. used to instruct zig to try to compile the file
     // - it also ensures that SubMessage deinit() works

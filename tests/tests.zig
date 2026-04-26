@@ -7,14 +7,6 @@ const metrics = @import("./generated/opentelemetry/proto/metrics/v1.pb.zig");
 const selfref = @import("./generated/selfref.pb.zig");
 const pblogs = @import("./generated/opentelemetry/proto/logs/v1.pb.zig");
 
-pub fn printAllDecoded(input: []const u8) !void {
-    var iterator = protobuf.WireDecoderIterator{ .input = input };
-    std.debug.print("Decoding: {s}\n", .{std.fmt.fmtSliceHexUpper(input)});
-    while (try iterator.next()) |extracted_data| {
-        std.debug.print("  {any}\n", .{extracted_data});
-    }
-}
-
 test "DefaultValuesInit" {
     var demo: DefaultValues = .{};
     defer demo.deinit(std.testing.allocator);
