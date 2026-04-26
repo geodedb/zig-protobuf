@@ -1,4 +1,3 @@
-const warn = @import("std").debug.warn;
 const std = @import("std");
 const pb = @import("protobuf");
 const plugin = @import("google/protobuf/compiler.pb.zig");
