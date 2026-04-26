@@ -1,0 +1,8 @@
+{
+  "ref_a": "646ba3f",
+  "ref_b": "1f47963",
+  "rounds": 10,
+  "warmups": 1,
+  "disable_flag": "none",
+  "out_dir": "docs/performance/2026-04-26-p-04-inline-packed-write"
+}
