@@ -65,17 +65,22 @@ unchanged but should be revisited for future runs.
 ## Stress follow-up
 
 The `benchmark-framework` skill's hard rule asks for the affected
-stress / integration suites to run 20× after a PASS verdict. The
-optimization touches `wire.decodeScalar`, which is exercised by:
+stress / integration suites to run 20× after a PASS verdict to
+catch any flake the single A/B pass might have masked. Driven by
+`scripts/stress_followup.sh`, run on this branch (commit `017590d`):
 
-- `zig build test` — 140/140 pass on this commit (single run)
-- All 7 integration bench scenarios — captured in this A/B run; no
-  scenario shows a regression beyond the gate
-- `tests/fuzz_decode.zig` — passes in the test suite
+```
+STRESS_FOLLOWUP result=PASS iterations=20
+test=20/20 pass, bench=20/20 pass
+```
 
-The 20× repeated stress run is not yet scripted; logging it as a
-follow-up. For now the integration scenarios within the A/B run
-serve as a single-shot smoke check.
+Per-iteration log: `stress/stress_followup.log`.
+Summary JSON: `stress/stress_followup_summary.json`.
+
+Each iteration ran `zig build test` (all 140 tests, including
+`tests/fuzz_decode.zig` and the full integration suite) and
+`zig build bench-integration -- --rounds 1 --warmups 0` (all 7
+fixture-driven scenarios). Zero flakes across 40 sub-runs.
 
 ## Acceptance
 
