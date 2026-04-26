@@ -2,6 +2,10 @@ const std = @import("std");
 
 const protobuf = @import("protobuf.zig");
 
+/// Parse a generated protobuf struct value from a `std.json.Reader`-shaped
+/// source. Accepts both proto-style (`snake_case`) and protobuf-JSON-canonical
+/// (`camelCase`) field names. Honors `options.duplicate_field_behavior` and
+/// `options.ignore_unknown_fields`.
 pub fn parse(
     Self: type,
     allocator: std.mem.Allocator,
@@ -104,6 +108,9 @@ pub fn parse(
     return result;
 }
 
+/// Decode a JSON byte slice into the generated message type `T`. Returns
+/// a `std.json.Parsed(T)` whose `arena` owns every allocation made
+/// during parsing — call `parsed.deinit()` to release them all at once.
 pub fn decode(
     comptime T: type,
     input: []const u8,
@@ -114,6 +121,10 @@ pub fn decode(
     return parsed;
 }
 
+/// Serialize a generated message value to a freshly-allocated JSON byte
+/// slice using protobuf-canonical field naming (camelCase, base64 bytes,
+/// `NaN`/`Infinity`/`-Infinity` as strings). Caller owns the returned
+/// memory and must `allocator.free` it.
 pub fn encode(
     data: anytype,
     options: std.json.Stringify.Options,
@@ -122,6 +133,9 @@ pub fn encode(
     return std.json.Stringify.valueAlloc(allocator, data, options);
 }
 
+/// Streaming JSON serialization for a generated message. `jws` is a
+/// `std.json.WriteStream`-shaped value; `stringify` is called from each
+/// generated message's `jsonStringify` method during nested encoding.
 pub fn stringify(Self: type, self: *const Self, jws: anytype) !void {
     // Increase eval branch quota for types with hundreds of fields
     @setEvalBranchQuota(1000000);

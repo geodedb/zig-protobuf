@@ -117,7 +117,13 @@ pub const Tag = packed struct(u32) {
     }
 };
 
+/// ZigZag transform for `sint32`/`sint64` proto fields. Maps signed
+/// integers onto unsigned values so that small-magnitude negatives
+/// encode as short varints. See protobuf.dev/programming-guides/encoding
+/// for the canonical mapping table.
 pub const ZigZag = struct {
+    /// ZigZag-encode an `i32` or `i64` value into the unsigned space
+    /// suitable for varint encoding.
     pub fn encode(int_value: anytype) u64 {
         const type_of_val = @TypeOf(int_value);
         const to_int64: i64 = switch (type_of_val) {

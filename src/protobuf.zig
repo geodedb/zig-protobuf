@@ -3,6 +3,10 @@ const std = @import("std");
 pub const json = @import("json.zig");
 pub const wire = @import("wire.zig");
 
+/// Error set returned by decode helpers when the input is malformed or
+/// truncated. `NotEnoughData` indicates an unexpected end of buffer
+/// during in-memory varint parsing. `InvalidInput` covers any wire-level
+/// validation failure (unknown wire type, negative length prefix, etc.).
 pub const DecodingError = error{ NotEnoughData, InvalidInput };
 
 /// Error type for encode operations.
@@ -850,6 +854,12 @@ pub fn deinitOneof(
     }
 }
 
+/// Release the heap allocations owned by a single field of a generated
+/// message struct. Used internally by `deinit`; exposed for cases where
+/// callers reset a single field manually. Safe for primitives, strings,
+/// bytes, repeated lists, submessages, and oneof fields. After this call
+/// the field's owning slot still exists — only its inner allocations
+/// are freed.
 pub fn deinitField(
     allocator: std.mem.Allocator,
     root: anytype,
