@@ -279,6 +279,18 @@ fn writeSubmessage(
 ) EncodeError!void {
     // TODO: Better handle calculating submessage size before write, or use
     // fixed-sized buffer.
+    //
+    // P-01 design note (2026-04-26): a naive "size then write" two-pass
+    // implementation using std.Io.Writer.Discarding for the first pass
+    // is asymptotically wrong — every nested submessage recurses into
+    // the same two-pass discipline, so the total work becomes
+    // O(2^depth) instead of O(depth). Confirmed empirically: encode
+    // of vector_tile.bin took ~22 ms with the naive approach vs the
+    // current ~5 ms 2-pass-with-alloc. The correct fix needs either a
+    // size-cache populated by a single top-down walk, or a writer
+    // that supports placeholder-patch (write max-width varint
+    // placeholder, fill in actual length after the body lands). Both
+    // are non-trivial; tracked under P-01 as a follow-up.
     var w: std.Io.Writer.Allocating = .init(allocator);
     defer w.deinit();
     try encode(&w.writer, allocator, value);
