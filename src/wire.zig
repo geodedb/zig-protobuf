@@ -19,6 +19,23 @@ pub const DecodeError = error{
     OutOfMemory,
 };
 
+/// Maximum nested-submessage depth allowed by `decodeMessage`. Crafted
+/// inputs with deeper nesting return `error.InvalidInput` before the
+/// recursion can exhaust the thread stack (CWE-674).
+pub const max_decode_depth: u32 = 100;
+
+/// Maximum bytes a single length-prefix may demand from the allocator
+/// when decoding a `string`, `bytes`, or repeated-string element.
+/// Larger values return `error.InvalidInput` before the allocation
+/// occurs (CWE-789).
+pub const max_decode_alloc_per_field: usize = 16 * 1024 * 1024;
+
+/// Maximum number of elements in a single repeated/packed list. Larger
+/// values return `error.InvalidInput` to prevent element-count
+/// amplification attacks where a small input drives unbounded
+/// `ArrayListUnmanaged` growth (CWE-789).
+pub const max_decode_elements: usize = 1_000_000;
+
 /// Wire type.
 pub const Type = enum(u3) {
     /// int32, int64, uint32, uint64, sint32, sint64, bool, enum
@@ -395,6 +412,10 @@ pub fn decodeRepeated(
         /// Number of bytes to parse. Provided for length-delimited records
         /// or packed repeated fields.
         bytes: ?usize = null,
+        /// Internal: current submessage recursion depth, threaded through
+        /// from `decodeMessage` so the depth limit is honored across
+        /// repeated submessage boundaries.
+        _depth: u32 = 0,
     },
 ) DecodeError!usize {
     comptime std.debug.assert(@typeInfo(@TypeOf(result)) == .pointer);
@@ -416,11 +437,20 @@ pub fn decodeRepeated(
                 // string/bytes are length-delimited, and cannot be packed.
                 std.debug.assert(options.bytes != null);
 
+                if (options.bytes.? > max_decode_alloc_per_field) {
+                    @branchHint(.cold);
+                    return error.InvalidInput;
+                }
+
                 const bytes = try allocator.alloc(u8, options.bytes.?);
                 errdefer allocator.free(bytes);
                 try reader.readSliceAll(bytes);
 
                 try result.append(allocator, bytes);
+                if (result.items.len > max_decode_elements) {
+                    @branchHint(.cold);
+                    return error.InvalidInput;
+                }
                 return bytes.len;
             }
             // Packed repeated scalar.
@@ -429,6 +459,10 @@ pub fn decodeRepeated(
                 while (consumed < bytes) {
                     const decoded, const c = try decodeScalar(scalar, reader);
                     try result.append(allocator, decoded);
+                    if (result.items.len > max_decode_elements) {
+                        @branchHint(.cold);
+                        return error.InvalidInput;
+                    }
                     consumed += c;
                 }
                 if (consumed != bytes) {
@@ -442,6 +476,10 @@ pub fn decodeRepeated(
                 const decoded, const consumed =
                     try decodeScalar(scalar, reader);
                 try result.append(allocator, decoded);
+                if (result.items.len > max_decode_elements) {
+                    @branchHint(.cold);
+                    return error.InvalidInput;
+                }
                 return consumed;
             }
         },
@@ -453,6 +491,10 @@ pub fn decodeRepeated(
                     const raw, const c = try decodeScalar(.int32, reader);
                     const decoded: Result = @enumFromInt(raw);
                     try result.append(allocator, decoded);
+                    if (result.items.len > max_decode_elements) {
+                        @branchHint(.cold);
+                        return error.InvalidInput;
+                    }
                     consumed += c;
                 }
                 if (consumed > bytes) {
@@ -466,6 +508,10 @@ pub fn decodeRepeated(
                 const raw, const consumed = try decodeScalar(.int32, reader);
                 const decoded: Result = @enumFromInt(raw);
                 try result.append(allocator, decoded);
+                if (result.items.len > max_decode_elements) {
+                    @branchHint(.cold);
+                    return error.InvalidInput;
+                }
                 return consumed;
             }
         },
@@ -477,13 +523,17 @@ pub fn decodeRepeated(
                 allocator,
                 try protobuf.init(Result, allocator),
             );
+            if (result.items.len > max_decode_elements) {
+                @branchHint(.cold);
+                return error.InvalidInput;
+            }
             errdefer result.items[result.items.len - 1].deinit(allocator);
             const msg = &result.items[result.items.len - 1];
             const consumed = try decodeMessage(
                 msg,
                 allocator,
                 reader,
-                .{ .bytes = options.bytes },
+                .{ .bytes = options.bytes, ._depth = options._depth + 1 },
             );
             if (consumed > options.bytes.?) {
                 @branchHint(.cold);
@@ -529,8 +579,18 @@ pub fn decodeMessage(
     options: struct {
         /// Number of bytes to parse. Provided for all submessages.
         bytes: ?usize = null,
+        /// Internal: current submessage recursion depth. Bumped on each
+        /// recursive entry; when this exceeds `max_decode_depth` the
+        /// decoder returns `error.InvalidInput` before further stack
+        /// growth (CWE-674 mitigation).
+        _depth: u32 = 0,
     },
 ) DecodeError!usize {
+    if (options._depth > max_decode_depth) {
+        @branchHint(.cold);
+        return error.InvalidInput;
+    }
+
     comptime std.debug.assert(@typeInfo(@TypeOf(result)) == .pointer);
     const Result = comptime @typeInfo(@TypeOf(result)).pointer.child;
     const ResultField = std.meta.FieldEnum(Result);
@@ -602,6 +662,10 @@ pub fn decodeMessage(
                             try decodeScalar(.int32, reader);
                         consumed += len_c;
                         if (len < 0) {
+                            @branchHint(.cold);
+                            return error.InvalidInput;
+                        }
+                        if (@as(usize, @intCast(len)) > max_decode_alloc_per_field) {
                             @branchHint(.cold);
                             return error.InvalidInput;
                         }
@@ -695,7 +759,7 @@ pub fn decodeMessage(
                             allocator,
                             repeated,
                             reader,
-                            .{ .bytes = @intCast(len) },
+                            .{ .bytes = @intCast(len), ._depth = options._depth },
                         );
                     }
                     // Unpacked encoding, despite packed repeated field.
@@ -708,7 +772,7 @@ pub fn decodeMessage(
                             allocator,
                             repeated,
                             reader,
-                            .{},
+                            .{ ._depth = options._depth },
                         );
                     }
                 },
@@ -735,7 +799,7 @@ pub fn decodeMessage(
                         allocator,
                         repeated,
                         reader,
-                        .{ .bytes = len },
+                        .{ .bytes = len, ._depth = options._depth },
                     );
                 },
                 .submessage => {
@@ -783,7 +847,7 @@ pub fn decodeMessage(
                                 @field(result, field.name).?,
                                 allocator,
                                 reader,
-                                .{ .bytes = @intCast(len) },
+                                .{ .bytes = @intCast(len), ._depth = options._depth + 1 },
                             );
                             if (message_consumed > len) {
                                 @branchHint(.cold);
@@ -811,7 +875,7 @@ pub fn decodeMessage(
                                 &@field(result, field.name).?,
                                 allocator,
                                 reader,
-                                .{ .bytes = @intCast(len) },
+                                .{ .bytes = @intCast(len), ._depth = options._depth + 1 },
                             );
                             if (message_consumed > len) {
                                 @branchHint(.cold);
@@ -864,6 +928,10 @@ pub fn decodeMessage(
                                     consumed += len_c;
 
                                     if (len < 0) {
+                                        @branchHint(.cold);
+                                        return error.InvalidInput;
+                                    }
+                                    if (@as(usize, @intCast(len)) > max_decode_alloc_per_field) {
                                         @branchHint(.cold);
                                         return error.InvalidInput;
                                     }
@@ -1002,7 +1070,7 @@ pub fn decodeMessage(
                                             ),
                                             allocator,
                                             reader,
-                                            .{ .bytes = @intCast(len) },
+                                            .{ .bytes = @intCast(len), ._depth = options._depth + 1 },
                                         );
                                         if (m_consumed > len) {
                                             @branchHint(.cold);
@@ -1038,7 +1106,7 @@ pub fn decodeMessage(
                                             ),
                                             allocator,
                                             reader,
-                                            .{ .bytes = @intCast(len) },
+                                            .{ .bytes = @intCast(len), ._depth = options._depth + 1 },
                                         );
                                         if (m_consumed > len) {
                                             @branchHint(.cold);

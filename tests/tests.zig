@@ -80,4 +80,70 @@ test "self ref test" {
     try std.testing.expectEqual(@as(i32, 1), decoded.node.?.version);
 }
 
+test "decode hardening: max_decode_depth rejects deeply-nested submessages" {
+    // Encode a SelfRefNode chain: version=1 wrapped in N nested `node`
+    // submessages. Each wrap prepends `[tag=0x12, varint(inner_len)]`
+    // bytes, where 0x12 is field 2 wire-type len. With max_decode_depth
+    // = 100, going to depth 200 must be rejected before stack overflow.
+    var buf: std.ArrayList(u8) = .empty;
+    defer buf.deinit(std.testing.allocator);
+
+    // innermost: version=1 → tag 0x08 (field 1 varint) + value 1
+    try buf.appendSlice(std.testing.allocator, &.{ 0x08, 0x01 });
+
+    var i: usize = 0;
+    while (i < 200) : (i += 1) {
+        const inner_len = buf.items.len;
+        // Fits in a single varint byte for any inner_len < 128, otherwise
+        // emit a 2-byte varint. Stays compact for the depth we need.
+        if (inner_len < 128) {
+            try buf.insertSlice(
+                std.testing.allocator,
+                0,
+                &.{ 0x12, @intCast(inner_len) },
+            );
+        } else {
+            const lo: u8 = @intCast((inner_len & 0x7F) | 0x80);
+            const hi: u8 = @intCast(inner_len >> 7);
+            try buf.insertSlice(
+                std.testing.allocator,
+                0,
+                &.{ 0x12, lo, hi },
+            );
+        }
+    }
+
+    var reader: std.Io.Reader = .fixed(buf.items);
+    try std.testing.expectError(
+        error.InvalidInput,
+        SelfRefNode.decode(&reader, std.testing.allocator),
+    );
+}
+
+test "decode hardening: max_decode_alloc_per_field rejects huge string len" {
+    // Encode jspb.DefaultValues string_field (field 1) with a length
+    // prefix of 32 MiB — exceeds protobuf.wire.max_decode_alloc_per_field
+    // (16 MiB). The decoder must error before any allocation occurs, so
+    // we don't need to provide the 32 MiB body.
+    const big: u64 = 32 * 1024 * 1024;
+    // varint(big): encode 5 bytes worth — big < 2^28 so 4 bytes suffice
+    var buf: [16]u8 = undefined;
+    var n: usize = 0;
+    buf[n] = 0x0A; // tag = (1 << 3) | 2 (len)
+    n += 1;
+    var v = big;
+    while (v >= 0x80) : (v >>= 7) {
+        buf[n] = @as(u8, @intCast(v & 0x7F)) | 0x80;
+        n += 1;
+    }
+    buf[n] = @as(u8, @intCast(v));
+    n += 1;
+
+    var reader: std.Io.Reader = .fixed(buf[0..n]);
+    try std.testing.expectError(
+        error.InvalidInput,
+        DefaultValues.decode(&reader, std.testing.allocator),
+    );
+}
+
 // TODO: check for cyclic structure
