@@ -103,6 +103,14 @@ pub const Tag = packed struct(u32) {
             return error.InvalidInput;
         }
 
+        // Field number 0 is forbidden by the protobuf spec (the smallest
+        // valid field number is 1). Rejecting it here prevents malformed
+        // payloads from masquerading as legitimate tags downstream.
+        if ((raw_result >> 3) == 0) {
+            @branchHint(.cold);
+            return error.InvalidInput;
+        }
+
         return .{ @bitCast(raw_result), consumed };
     }
 
