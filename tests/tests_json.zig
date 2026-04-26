@@ -1023,3 +1023,27 @@ test "JSON: decode selfref structs" {
 test "JSON: encode selfref structs" {
     // TODO
 }
+
+test "JSON: encodeToWriter matches encode (P-09)" {
+    // P-09: confirms the streaming encode entry point produces the
+    // same bytes as the buffer-allocating one.
+    var pb_instance = try test_oneof2_init(allocator);
+    defer pb_instance.deinit(allocator);
+
+    const reference = try protobuf.json.encode(
+        pb_instance,
+        .{ .whitespace = .indent_2 },
+        allocator,
+    );
+    defer allocator.free(reference);
+
+    var aw: std.Io.Writer.Allocating = .init(allocator);
+    defer aw.deinit();
+    try protobuf.json.encodeToWriter(
+        pb_instance,
+        .{ .whitespace = .indent_2 },
+        &aw.writer,
+    );
+
+    try expectEqualSlices(u8, reference, aw.written());
+}

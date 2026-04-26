@@ -133,6 +133,28 @@ pub fn encode(
     return std.json.Stringify.valueAlloc(allocator, data, options);
 }
 
+/// Streaming JSON encode — writes the serialized form of `data`
+/// directly into `writer` without going through an intermediate
+/// `[]u8` allocation. Use this when the consumer already owns a
+/// destination writer (file, socket, in-memory buffer with custom
+/// growth policy) and would otherwise free the slice produced by
+/// `encode` immediately.
+///
+/// Closes P-09 from the perf gap analysis. The audit flagged
+/// `valueAlloc` as a "value-tree round-trip" but inspection of
+/// Zig 0.16.0's `std.json.Stringify` shows the encoder already
+/// streams directly to the writer (no value tree is built). The
+/// only avoidable cost is the temp `Writer.Allocating` buffer
+/// inside `valueAlloc`; this entry point gives consumers a way
+/// to bypass it when they have their own writer.
+pub fn encodeToWriter(
+    data: anytype,
+    options: std.json.Stringify.Options,
+    writer: *std.Io.Writer,
+) std.json.Stringify.Error!void {
+    try std.json.Stringify.value(data, options, writer);
+}
+
 /// Streaming JSON serialization for a generated message. `jws` is a
 /// `std.json.WriteStream`-shaped value; `stringify` is called from each
 /// generated message's `jsonStringify` method during nested encoding.
