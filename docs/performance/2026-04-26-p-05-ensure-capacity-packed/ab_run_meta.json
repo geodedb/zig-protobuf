@@ -1,0 +1,8 @@
+{
+  "ref_a": "ce4a045",
+  "ref_b": "2c59dab",
+  "rounds": 10,
+  "warmups": 1,
+  "disable_flag": "none",
+  "out_dir": "docs/performance/2026-04-26-p-05-ensure-capacity-packed"
+}
