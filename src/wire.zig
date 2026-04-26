@@ -1080,8 +1080,27 @@ fn skipField(reader: anytype, tag: Tag) DecodeError!usize {
             _, const c = try decodeScalar(.uint64, reader);
             consumed += c;
         },
-        .sgroup, .egroup => {
-            // `sgroup`/`egroup` not supported.
+        .sgroup => {
+            // proto2 group: scan inner tags until the matching egroup.
+            // The previous empty body consumed zero bytes, letting the
+            // outer decode loop spin forever on malformed input (CWE-835).
+            while (true) {
+                const inner, const c = try Tag.decode(reader);
+                consumed += c;
+                if (inner.wire_type == .egroup) {
+                    if (inner.field != tag.field) {
+                        @branchHint(.cold);
+                        return error.InvalidInput;
+                    }
+                    break;
+                }
+                consumed += try skipField(reader, inner);
+            }
+        },
+        .egroup => {
+            // Stray egroup without matching sgroup is malformed.
+            @branchHint(.cold);
+            return error.InvalidInput;
         },
     }
 
