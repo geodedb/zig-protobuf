@@ -621,13 +621,38 @@ pub fn init(comptime T: type, allocator: std.mem.Allocator) std.mem.Allocator.Er
     }
 }
 
+/// Maximum nested-submessage depth allowed by `dupe`. Self-referential
+/// message graphs (cycles) would otherwise recurse until stack overflow;
+/// hitting the limit returns `error.OutOfMemory` instead.
+pub const max_dupe_depth: u32 = 100;
+
 /// Generic function to deeply duplicate a message using a new allocator.
 /// The original parameter is constant
 pub fn dupe(comptime T: type, original: T, allocator: std.mem.Allocator) std.mem.Allocator.Error!T {
+    return dupeImpl(T, original, allocator, 0);
+}
+
+fn dupeImpl(
+    comptime T: type,
+    original: T,
+    allocator: std.mem.Allocator,
+    depth: u32,
+) std.mem.Allocator.Error!T {
+    if (depth > max_dupe_depth) {
+        @branchHint(.cold);
+        return error.OutOfMemory;
+    }
+
     var result: T = undefined;
 
     inline for (@typeInfo(T).@"struct".fields) |field| {
-        @field(result, field.name) = try dupeField(original, field.name, @field(T._desc_table, field.name).ftype, allocator);
+        @field(result, field.name) = try dupeField(
+            original,
+            field.name,
+            @field(T._desc_table, field.name).ftype,
+            allocator,
+            depth,
+        );
     }
 
     return result;
@@ -639,6 +664,7 @@ fn dupeField(
     comptime field_name: []const u8,
     comptime ftype: FieldType,
     allocator: std.mem.Allocator,
+    depth: u32,
 ) std.mem.Allocator.Error!@TypeOf(@field(original, field_name)) {
     switch (ftype) {
         .@"enum" => return @field(original, field_name),
@@ -702,7 +728,7 @@ fn dupeField(
             switch (repeated) {
                 .submessage => {
                     for (@field(original, field_name).items) |item| {
-                        try list.append(allocator, try item.dupe(allocator));
+                        try list.append(allocator, try dupeImpl(@TypeOf(item), item, allocator, depth + 1));
                     }
                 },
                 .scalar => |scalar| switch (scalar) {
@@ -745,13 +771,14 @@ fn dupeField(
                         const inner_ti = comptime @typeInfo(Inner);
                         switch (comptime inner_ti) {
                             .@"struct" => {
-                                return try val.dupe(allocator);
+                                return try dupeImpl(Inner, val, allocator, depth + 1);
                             },
                             // Handle self-referential submessage
                             .pointer => |p| {
                                 std.debug.assert(p.size == .one);
                                 const result = try allocator.create(p.child);
-                                result.* = try val.dupe(allocator);
+                                errdefer allocator.destroy(result);
+                                result.* = try dupeImpl(p.child, val.*, allocator, depth + 1);
                                 return result;
                             },
                             else => @compileError(std.fmt.comptimePrint(
@@ -773,7 +800,8 @@ fn dupeField(
                 .pointer => |p| {
                     comptime std.debug.assert(p.size == .one);
                     const result = try allocator.create(p.child);
-                    result.* = try @field(original, field_name).dupe(allocator);
+                    errdefer allocator.destroy(result);
+                    result.* = try dupeImpl(p.child, @field(original, field_name).*, allocator, depth + 1);
                     return result;
                 },
                 // Handle submessage in "oneof"; non-optional struct in union.
@@ -783,7 +811,7 @@ fn dupeField(
                 // of a sent submessage/other union field will be interpreted
                 // as the union itself being null.
                 .@"struct" => {
-                    return try @field(original, field_name).dupe(allocator);
+                    return try dupeImpl(Field, @field(original, field_name), allocator, depth + 1);
                 },
                 else => @compileError(std.fmt.comptimePrint(
                     "invalid submessage type {s}",
@@ -799,7 +827,13 @@ fn dupeField(
                     // and if one matches the actual tagName of the union
                     if (std.mem.eql(u8, union_field.name, active)) {
                         // deinit the current value
-                        const value = try dupeField(union_value, union_field.name, @field(one_of._desc_table, union_field.name).ftype, allocator);
+                        const value = try dupeField(
+                            union_value,
+                            union_field.name,
+                            @field(one_of._desc_table, union_field.name).ftype,
+                            allocator,
+                            depth,
+                        );
 
                         return @unionInit(one_of, union_field.name, value);
                     }

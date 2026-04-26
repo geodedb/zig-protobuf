@@ -120,6 +120,29 @@ test "decode hardening: max_decode_depth rejects deeply-nested submessages" {
     );
 }
 
+test "dupe hardening: max_dupe_depth rejects deep chain" {
+    // Build a SelfRefNode chain longer than protobuf.max_dupe_depth (100).
+    // Cycles or pathological depth would otherwise infinite-recurse on
+    // dupe. Allocations live in an arena so partial-clone state on the
+    // OutOfMemory failure path is reclaimed deterministically.
+    var arena: std.heap.ArenaAllocator = .init(std.testing.allocator);
+    defer arena.deinit();
+    const ally = arena.allocator();
+
+    var head: SelfRefNode = .{};
+    var current: *SelfRefNode = &head;
+    var i: u32 = 0;
+    while (i < 200) : (i += 1) {
+        const node = try ally.create(SelfRefNode);
+        node.* = .{};
+        node.version = @intCast(i + 1);
+        current.node = node;
+        current = node;
+    }
+
+    try std.testing.expectError(error.OutOfMemory, head.dupe(ally));
+}
+
 test "decode hardening: max_decode_alloc_per_field rejects huge string len" {
     // Encode jspb.DefaultValues string_field (field 1) with a length
     // prefix of 32 MiB — exceeds protobuf.wire.max_decode_alloc_per_field
