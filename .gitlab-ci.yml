@@ -1,0 +1,48 @@
+default:
+  image: debian:bookworm-slim
+  before_script:
+    - apt-get update -qq
+    - apt-get install -y --no-install-recommends curl ca-certificates xz-utils
+    - curl -fsSL "https://ziglang.org/download/${ZIG_VERSION}/zig-x86_64-linux-${ZIG_VERSION}.tar.xz" | tar -xJf -
+    - export PATH="$CI_PROJECT_DIR/zig-x86_64-linux-${ZIG_VERSION}:$PATH"
+    - zig version
+
+variables:
+  ZIG_VERSION: "0.16.0"
+
+stages:
+  - check
+  - test
+
+fmt:
+  stage: check
+  script:
+    - >
+      zig fmt --check
+      build.zig
+      src/
+      utils/
+      bootstrapped-generator/main.zig
+      bootstrapped-generator/FullName.zig
+      tests/tests.zig
+      tests/tests_varints.zig
+      tests/tests_fixedsizes.zig
+      tests/tests_complex_type.zig
+      tests/tests_json.zig
+      tests/oneof.zig
+      tests/optionals.zig
+      tests/alltypes.zig
+      tests/leaks.zig
+      tests/graphics.zig
+      tests/mapbox.zig
+      tests/integration.zig
+
+build:
+  stage: test
+  script:
+    - zig build -Doptimize=Debug
+
+test:
+  stage: test
+  script:
+    - zig build test --summary all
