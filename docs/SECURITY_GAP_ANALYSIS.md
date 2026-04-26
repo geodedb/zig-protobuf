@@ -7,26 +7,24 @@
 
 ## Summary
 
-| Risk Level | Open | Closed | Total |
-|-----------|------|--------|-------|
-| Critical  | 0    | 0      | 0     |
-| High      | 3    | 2      | 5     |
-| Medium    | 5    | 0      | 5     |
-| Low       | 5    | 0      | 5     |
-| Info      | 1    | 0      | 1     |
-| **Total** | **14** | **2** | **16** |
+| Risk Level | Open | Closed | Deferred (Won't Do) | Total |
+|-----------|------|--------|---------------------|-------|
+| Critical  | 0    | 0      | 0                   | 0     |
+| High      | 0    | 5      | 0                   | 5     |
+| Medium    | 0    | 2      | 3 (S4, S5, N13)     | 5     |
+| Low       | 0    | 1 (S6) | 4 (N2, N3, N7, S7) | 5     |
+| Info      | 0    | 1 (N16)| 0                   | 1     |
+| **Total** | **0** | **9** | **7** | **16** |
 
-Open High findings: S1, S2a, S2b.
-Open Medium findings: S4, S5, N2, N8, N13.
-Open Low findings: N3, N4, N7, S6, S7.
-Open Info findings: N16.
+**Closed:** S3 (`b88d845`), S1 + S2a + S2b (`1e171cc`), N1 (`92c5a59`),
+N8 (`a13c854`), S6 (`b6aa932`), N16 (`913e626`), S7 doc (`be33345`).
 
-**Closed in this run:** S3 (b88d845), N1 (92c5a59) — see `GAP_ANALYSIS_RESOLVED.md`.
-
-**Remaining immediate actions:**
-1. **S1 — unbounded recursion DoS** via `decodeMessage` submessage chains (add `max_depth`).
-2. **S2a / S2b — allocation and element-count amplification** (per-field cap, total cap, max-elements cap).
-3. **N8 — Tag.decode accepts field == 0** (spec-forbidden; one-line guard).
+**Deferred (Won't Do this run, see `GAP_ANALYSIS_RESOLVED.md` for rationale):**
+S4 (UTF-8 opt-in pending consumer ask), S5 (generator panics; build-time
+DoS only), N2 (skipField .len cap; low risk), N3 (32-bit overflow; arch
+restricted), N4 (decode_bool author-explicit strict policy → reclassified
+won't do), N7 (base64 arena hygiene; low risk), N13 (generator path
+traversal; build-time only).
 
 **No secrets** found in repo. **No platform issues created** (running in `--skip-issues` mode).
 
@@ -58,20 +56,20 @@ Open Info findings: N16.
 |------|-----|----------|-----------:|--------------------------------------------------------------------------------|------------------------------------------------------------|----------------------|---------:|-------:|-------:|---------------|
 | 1    | S3  | High     |       140  | Duplicate `errdefer` causes double-free in `repeated bytes`/`string` decode    | src/wire.zig:406-410                                       | CWE-415              |        4 |      5 |      1 | **Closed (b88d845)** |
 | 2    | N1  | High     |        84  | sgroup/egroup path returns consumed=0 → infinite CPU loop                      | src/wire.zig:1084                                          | CWE-835              |        4 |      3 |      1 | **Closed (92c5a59)** |
-| 3    | S1  | High     |        52.5| Unbounded recursion in `decodeMessage` via submessage chains                   | src/wire.zig:469,769,797,985,1021                          | CWE-674              |        5 |      3 |      2 | confirmed     |
-| 4    | S2a | High     |        52.5| Missing allocation cap on length-prefix-driven `alloc`                         | src/wire.zig:405,597,859                                   | CWE-789              |        5 |      3 |      2 | confirmed     |
-| 5    | S2b | High     |        52.5| Packed/repeated scalar/enum loop unbounded element count                       | src/wire.zig:415-433,437-449                               | CWE-789              |        5 |      3 |      2 | confirmed     |
+| 3    | S1  | High     |        52.5| Unbounded recursion in `decodeMessage` via submessage chains                   | src/wire.zig:469,769,797,985,1021                          | CWE-674              |        5 |      3 |      2 | **Closed (1e171cc)** |
+| 4    | S2a | High     |        52.5| Missing allocation cap on length-prefix-driven `alloc`                         | src/wire.zig:405,597,859                                   | CWE-789              |        5 |      3 |      2 | **Closed (1e171cc)** |
+| 5    | S2b | High     |        52.5| Packed/repeated scalar/enum loop unbounded element count                       | src/wire.zig:415-433,437-449                               | CWE-789              |        5 |      3 |      2 | **Closed (1e171cc)** |
 | 6    | N2  | Medium   |        24  | `skipField` `.len` discards up to 2 GiB without bound                          | src/wire.zig:1077                                          | CWE-789              |        4 |      3 |      2 | confirmed     |
-| 7    | N8  | Medium   |        24  | `Tag.decode` accepts field == 0 (spec-forbidden)                               | src/wire.zig:91-107                                        | CWE-20               |        3 |      2 |      1 | confirmed     |
+| 7    | N8  | Medium   |        24  | `Tag.decode` accepts field == 0 (spec-forbidden)                               | src/wire.zig:91-107                                        | CWE-20               |        3 |      2 |      1 | **Closed (a13c854)** |
 | 8    | N13 | Medium   |        18  | Generator package name flows to FS path without `..`/absolute sanitization     | bootstrapped-generator/main.zig:127, 949                   | CWE-22               |        3 |      3 |      2 | confirmed     |
 | 9    | S4  | Medium   |         8  | No UTF-8 validation on string fields (spec non-conformance)                    | src/wire.zig:602, 864 + repeated paths                     | CWE-176              |        2 |      2 |      2 | confirmed     |
 | 10   | S5  | Medium   |         8  | Generator panics + recursion on adversarial `CodeGeneratorRequest` stdin       | bootstrapped-generator/main.zig:367, 429, 566, 801         | CWE-248, CWE-674     |        3 |      2 |      3 | confirmed     |
-| 11   | N4  | Low      |         4  | `decode_bool` rejects multi-byte varints (spec-noncompliant)                   | src/wire.zig:278-288                                       | CWE-20               |        2 |      2 |      1 | confirmed     |
+| 11   | N4  | Low      |         4  | `decode_bool` rejects multi-byte varints (spec-noncompliant)                   | src/wire.zig:278-288                                       | CWE-20               |        2 |      2 |      1 | **Won't Do** (author-explicit strict policy; cited in alltypes.zig "Required.Proto3...BOOL.PackedInput" test) |
 | 12   | S6  | Low      |         4  | `protoc-linux-64` URL points at `win64.zip` (dormant artifact mismatch)        | build.zig.zon:11-13                                        | CWE-494              |        2 |      2 |      1 | **Closed (b6aa932)** (also GAP-PB-001) |
 | 13   | N3  | Low      |         3  | `consumed += @intCast(len)` may overflow `usize` on 32-bit                     | src/wire.zig:604, 866, 1077, 1078                          | CWE-190              |        2 |      3 |      2 | confirmed     |
 | 14   | N7  | Low      |         2  | base64 input held in arena until decode complete (memory bloat)                | src/json.zig:531-540                                       | CWE-401 (indirect)   |        2 |      2 |      2 | confirmed     |
 | 15   | S7  | Low      |         2  | FS ops on developer-supplied paths (build-time, trusted boundary)              | utils/build_util.zig:9, 15, 186                            | CWE-22               |        1 |      2 |      1 | doc-only      |
-| 16   | N16 | Info     |       N/A  | No fuzzing harness for wire decode                                             | repo-wide                                                  | CWE-1108             |      N/A |    N/A |    N/A | hardening gap |
+| 16   | N16 | Info     |       N/A  | No fuzzing harness for wire decode                                             | repo-wide                                                  | CWE-1108             |      N/A |    N/A |    N/A | **Closed (913e626)** — tests/fuzz_decode.zig + `zig build test --fuzz` |
 
 ## Top 5 Exploitable Issues (Ranked)
 

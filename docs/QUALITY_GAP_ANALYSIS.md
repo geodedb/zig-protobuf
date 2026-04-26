@@ -6,15 +6,24 @@
 
 ## Summary
 
-| Severity | Open | Closed | Total |
-|----------|------|--------|-------|
-| Critical | 0 | 0 | 0 |
-| High | 3 | 0 | 3 |
-| Medium | 8 | 1 (Q-11) | 9 |
-| Low | 9 | 0 | 9 |
-| **Total** | **20** | **1** | **21** |
+| Severity | Open | Closed | Deferred | Total |
+|----------|------|--------|----------|-------|
+| Critical | 0 | 0 | 0 | 0 |
+| High | 0 | 0 | 3 (Q-01, Q-02, Q-03) | 3 |
+| Medium | 1 (Q-21 partial) | 7 | 1 (Q-15) | 9 |
+| Low | 0 | 4 | 5 (Q-04..Q-07 + Q-18 coverage gap) | 9 |
+| **Total** | **1** | **11** | **9** | **21** |
 
-Q-18 partially closed: GAP-PB-004 (CI) and GAP-PB-009 (`zig fmt --check`) addressed; coverage/fuzz/bench gaps remain.
+**Closed:** Q-08 (via GAP-PB-017), Q-09 + Q-10 (via GAP-PB-012),
+Q-11 (via GAP-PB-003), Q-12 (via GAP-PB-019), Q-13 (via GAP-PB-020),
+Q-14 (`713a0a8`), Q-16 + Q-17 (via GAP-PB-018), Q-18 partial:
+CI/fmt/fuzz/bench landed; only coverage remains, Q-19 (`be33345`),
+Q-20 (via GAP-PB-022).
+
+**Deferred (per audit reviewer's "do last" recommendation):** Q-01
+(decodeMessage 539 LOC), Q-02 (sibling type-matrix functions), Q-03
+(generateMessages 234 LOC), Q-04 / Q-05 / Q-06 / Q-07 (duplication
+refactors), Q-15 (snake_case rename, public API breaking).
 
 **Top finding (PriorityScore):** Q-02 — sibling 100-175 LOC manual proto-type-matrix functions in `src/protobuf.zig` (`dupeField`, `deinitField`, `writeValue`).
 

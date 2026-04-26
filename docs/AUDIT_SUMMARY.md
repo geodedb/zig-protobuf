@@ -1,14 +1,16 @@
 # Full Codebase Audit Summary — devnw/zig/protobuf
 
 **Generated:** 2026-04-26
-**Last updated:** 2026-04-26 (post gap-close run; 5 items closed across 5 commits)
+**Last updated:** 2026-04-26 (post gap-close runs #1 + #2; 24 items closed across 21 commits)
 **Scope:** entire repo
 **Mode:** `--skip-issues` (GitLab platform; no issues created)
 **Audit Domains:** Gap Analysis · Code Quality · Performance · Security
 
-## Closed in this Run
+## Closed Across Two Gap-Close Runs
 
-5 items closed across 5 commits — see `GAP_ANALYSIS_RESOLVED.md` for full detail.
+24 items closed across 21 commits — see `GAP_ANALYSIS_RESOLVED.md` for full per-item detail.
+
+### Gap-close run #1 (5 items)
 
 | ID | Severity | Title | Commit |
 |----|----------|-------|--------|
@@ -18,7 +20,28 @@
 | N1 | High (Risk 84) | `skipField` sgroup/egroup CPU infinite loop | `92c5a59` |
 | GAP-PB-004 | High | No CI configuration → added `.gitlab-ci.yml` | `bd2ef6a` |
 
-**Post-run state:** 138/138 tests pass; 0 regressions. Critical gaps reduced 3 → 1 (GAP-PB-002 remains). Security High findings reduced 5 → 3.
+### Gap-close run #2 (19 items, ~24 incl. cross-references)
+
+| ID | Severity | Title | Commit |
+|----|----------|-------|--------|
+| GAP-PB-011 | Medium | Unused `std.log.scoped` declaration | `423c0be` |
+| GAP-PB-012 + Q-09 + Q-10 | Medium | Dead extraction types and helpers | `f6f3295` |
+| GAP-PB-016 | Medium | README install snippet stale | `29c4e70` |
+| GAP-PB-017 + Q-08 | Medium | `isEnvVarTruthy` no-op stub | `ec9cfe0` |
+| GAP-PB-019 + Q-12 | Medium | build.zig redundant addImport + unused imports | `7a60988` |
+| GAP-PB-020 + Q-13 | Low | tests/integration.zig unused imports | `10f030f` |
+| GAP-PB-022 + Q-20 | Low | build.zig.zon paths whitelist non-existent dirs | `364d66a` |
+| Q-14 | Low | Unused `warn` import in main.zig | `713a0a8` |
+| GAP-PB-018 + Q-16 + Q-17 | Medium | Public API doc-comment gaps | `2ce5282` |
+| N8 | Medium (CWE-20) | `Tag.decode` rejects field 0 | `a13c854` |
+| GAP-PB-002 | Critical | sint32/sint64 zigzag round-trip TODO (decoder was correct; TODO had wrong values) | `5076601` |
+| Q-19 + S7 | Low | SECURITY.md, CONTRIBUTING.md, CHANGELOG.md, .editorconfig | `be33345` |
+| S1 + S2a + S2b | High (CWE-674, 789) | Decode hardening (max_depth, max_alloc_per_field, max_elements) | `1e171cc` |
+| GAP-PB-008 | High | `dupe` cycle detection (max_dupe_depth) | `f3e9785` |
+| P-07 + P-10 | P1, P2 | Stack-buffer varint/fixed write; appendAssumeCapacity | `40ffe07` |
+| GAP-PB-013 + GAP-PB-015 + P-11/12/13 + N16 | Medium / Info | Bench harness + fuzz harness | `913e626` |
+
+**Post-run state:** 140/140 tests pass; 0 regressions. **Critical gaps:** 3 → 0. **Security High findings:** 5 → 0 open. Coverage / large refactors / large feature work explicitly deferred (see `GAP_ANALYSIS_RESOLVED.md` § "Deferred").
 
 ## Repository
 
