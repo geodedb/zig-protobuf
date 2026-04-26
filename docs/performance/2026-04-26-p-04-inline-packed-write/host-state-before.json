@@ -1,0 +1,13 @@
+{
+  "captured_at_unix": 1777239782,
+  "uname": "Linux lothiriel 6.12.74+deb13+1-amd64 #1 SMP PREEMPT_DYNAMIC Debian 6.12.74-2 (2026-03-08) x86_64 GNU/Linux",
+  "uname_s": "Linux",
+  "arch": "x86_64",
+  "hostname": "lothiriel",
+  "cpu_model": "Intel(R) Xeon(R) CPU E5-2680 v4 @ 2.40GHz",
+  "core_count": 56,
+  "mem_total_kb": 263786484,
+  "loadavg": [4.76, 6.95, 8.17],
+  "scaling_governor": "schedutil",
+  "git_sha": "646ba3f->1f47963"
+}
