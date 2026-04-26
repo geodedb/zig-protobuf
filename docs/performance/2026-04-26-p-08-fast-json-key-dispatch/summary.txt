@@ -1,0 +1,1 @@
+NATIVE_BENCH result=PASS scenarios=18 regressions=0 improvements=0 ref_a=e4c20a57 ref_b=2b474019
