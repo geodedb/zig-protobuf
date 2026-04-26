@@ -16,15 +16,6 @@ pub fn fileExists(path: []const u8) bool {
     return true;
 }
 
-// Environment utilities
-pub fn isEnvVarTruthy(allocator: std.mem.Allocator, name: []const u8) bool {
-    _ = allocator;
-    _ = name;
-    // Environment variable access removed in 0.16.0 (no std.c.getenv);
-    // this helper is unused in the current build flow.
-    return false;
-}
-
 pub fn ensureProtocBinaryDownloaded(
     b: *std.Build,
 ) !?[]const u8 {
