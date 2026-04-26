@@ -237,10 +237,30 @@ pub fn buildGenerator(b: *std.Build, opt: GenOptions) *std.Build.Step.Compile {
     const module = b.addModule("protobuf", .{
         .root_source_file = b.path("src/protobuf.zig"),
     });
+    module.addImport("build_options", defaultProtobufOptions(b));
 
     exe.root_module.addImport("protobuf", module);
 
     b.installArtifact(exe);
 
     return exe;
+}
+
+/// Build a `build_options` module populated with the default values
+/// for every feature flag declared in `src/wire.zig` and friends. This
+/// is what the generator binary's protobuf module sees when the
+/// downstream consumer hasn't explicitly toggled an optimization.
+/// The repo's top-level `build.zig` overrides these per-flag via
+/// `b.option(bool, "use-...", ...)`; this helper keeps the rest of
+/// the build graph compilable when no toggles are in play.
+pub fn defaultProtobufOptions(b: *std.Build) *std.Build.Module {
+    const bo = b.addOptions();
+    bo.addOption(bool, "use_fast_varint", true);
+    bo.addOption(bool, "use_single_pass_submessage", true);
+    bo.addOption(bool, "use_fast_tag_dispatch", true);
+    bo.addOption(bool, "use_inline_packed_write", true);
+    bo.addOption(bool, "use_ensure_capacity_packed", true);
+    bo.addOption(bool, "use_fast_json_key_dispatch", true);
+    bo.addOption(bool, "use_direct_json_encode", true);
+    return bo.createModule();
 }

@@ -16,6 +16,86 @@ pub fn build(b: *std.Build) !void {
     // set a preferred release mode, allowing the user to decide how to optimize.
     const optimize = b.standardOptimizeOption(.{});
 
+    // Feature-flag build options — every optimization called out in
+    // docs/performance/2026-04-26-encode-decode-baseline/plan.json
+    // ("feature_flag_contract") gets a -D toggle so the AB runner can
+    // flip an optimization off on the candidate ref to confirm the
+    // measured delta is caused by the optimization. The defaults are
+    // all true; the AB-disable run flips one flag to false.
+    const opt_use_fast_varint = b.option(
+        bool,
+        "use-fast-varint",
+        "Enable the P-02 fast-path varint decoder (default: true)",
+    ) orelse true;
+    const opt_use_single_pass_submessage = b.option(
+        bool,
+        "use-single-pass-submessage",
+        "Enable the P-01 single-pass writeSubmessage (default: true)",
+    ) orelse true;
+    const opt_use_fast_tag_dispatch = b.option(
+        bool,
+        "use-fast-tag-dispatch",
+        "Enable the P-03 inline-for tag dispatch (default: true)",
+    ) orelse true;
+    const opt_use_inline_packed_write = b.option(
+        bool,
+        "use-inline-packed-write",
+        "Enable the P-04 inline packed-list writer (default: true)",
+    ) orelse true;
+    const opt_use_ensure_capacity_packed = b.option(
+        bool,
+        "use-ensure-capacity-packed",
+        "Enable the P-05 ensureTotalCapacity in decodeRepeated (default: true)",
+    ) orelse true;
+    const opt_use_fast_json_key_dispatch = b.option(
+        bool,
+        "use-fast-json-key-dispatch",
+        "Enable the P-08 fast JSON key dispatch (default: true)",
+    ) orelse true;
+    const opt_use_direct_json_encode = b.option(
+        bool,
+        "use-direct-json-encode",
+        "Enable the P-09 direct JSON encode (default: true)",
+    ) orelse true;
+
+    // Helper that builds a fresh build_options module. Each consumer
+    // (lib root_module, protobuf module, every test artifact, every
+    // bench exe) gets its own instance so they can be tuned
+    // independently if needed; for now they share the same value set.
+    const buildProtobufOptions = struct {
+        fn create(
+            bb: *std.Build,
+            fast_varint: bool,
+            single_pass_submessage: bool,
+            fast_tag_dispatch: bool,
+            inline_packed_write: bool,
+            ensure_capacity_packed: bool,
+            fast_json_key_dispatch: bool,
+            direct_json_encode: bool,
+        ) *std.Build.Module {
+            const bo = bb.addOptions();
+            bo.addOption(bool, "use_fast_varint", fast_varint);
+            bo.addOption(bool, "use_single_pass_submessage", single_pass_submessage);
+            bo.addOption(bool, "use_fast_tag_dispatch", fast_tag_dispatch);
+            bo.addOption(bool, "use_inline_packed_write", inline_packed_write);
+            bo.addOption(bool, "use_ensure_capacity_packed", ensure_capacity_packed);
+            bo.addOption(bool, "use_fast_json_key_dispatch", fast_json_key_dispatch);
+            bo.addOption(bool, "use_direct_json_encode", direct_json_encode);
+            return bo.createModule();
+        }
+    }.create;
+
+    const lib_options = buildProtobufOptions(
+        b,
+        opt_use_fast_varint,
+        opt_use_single_pass_submessage,
+        opt_use_fast_tag_dispatch,
+        opt_use_inline_packed_write,
+        opt_use_ensure_capacity_packed,
+        opt_use_fast_json_key_dispatch,
+        opt_use_direct_json_encode,
+    );
+
     const lib = b.addLibrary(.{
         .name = "zig-protobuf",
         // In this case the main source file is merely a path, however, in more
@@ -28,6 +108,7 @@ pub fn build(b: *std.Build) !void {
 
         .linkage = .static,
     });
+    lib.root_module.addImport("build_options", lib_options);
 
     // This declares intent for the library to be installed into the standard
     // location when the user invokes the "install" step (the default step when
@@ -39,6 +120,16 @@ pub fn build(b: *std.Build) !void {
         .target = target,
         .optimize = optimize,
     });
+    module.addImport("build_options", buildProtobufOptions(
+        b,
+        opt_use_fast_varint,
+        opt_use_single_pass_submessage,
+        opt_use_fast_tag_dispatch,
+        opt_use_inline_packed_write,
+        opt_use_ensure_capacity_packed,
+        opt_use_fast_json_key_dispatch,
+        opt_use_direct_json_encode,
+    ));
 
     const exe = build_util.buildGenerator(b, .{
         .target = target,
@@ -197,46 +288,9 @@ pub fn build(b: *std.Build) !void {
     else
         .ReleaseSafe;
 
-    // Feature-flag build options — every optimization called out in
-    // docs/performance/2026-04-26-encode-decode-baseline/plan.json
-    // ("feature_flag_contract") gets a corresponding -D toggle so the
-    // AB runner can flip it off on the candidate ref to confirm the
-    // measured delta is actually caused by the optimization.
-    const opt_use_fast_varint = b.option(
-        bool,
-        "use-fast-varint",
-        "Enable the P-02 fast-path varint decoder (default: true)",
-    ) orelse true;
-    const opt_use_single_pass_submessage = b.option(
-        bool,
-        "use-single-pass-submessage",
-        "Enable the P-01 single-pass writeSubmessage (default: true)",
-    ) orelse true;
-    const opt_use_fast_tag_dispatch = b.option(
-        bool,
-        "use-fast-tag-dispatch",
-        "Enable the P-03 inline-for tag dispatch (default: true)",
-    ) orelse true;
-    const opt_use_inline_packed_write = b.option(
-        bool,
-        "use-inline-packed-write",
-        "Enable the P-04 inline packed-list writer (default: true)",
-    ) orelse true;
-    const opt_use_ensure_capacity_packed = b.option(
-        bool,
-        "use-ensure-capacity-packed",
-        "Enable the P-05 ensureTotalCapacity in decodeRepeated (default: true)",
-    ) orelse true;
-    const opt_use_fast_json_key_dispatch = b.option(
-        bool,
-        "use-fast-json-key-dispatch",
-        "Enable the P-08 fast JSON key dispatch (default: true)",
-    ) orelse true;
-    const opt_use_direct_json_encode = b.option(
-        bool,
-        "use-direct-json-encode",
-        "Enable the P-09 direct JSON encode (default: true)",
-    ) orelse true;
+    // (Feature-flag -D options are declared at the top of build() so
+    // both the protobuf module and the bench exes share the same
+    // value set. See `buildProtobufOptions` above.)
 
     // Generated message modules used by integration scenarios. The
     // bench exe needs `vector_tile.pb.zig` and `graphics.pb.zig`,
