@@ -1,0 +1,9 @@
+{
+  "ref_a": "09fa0d8",
+  "ref_b": "fe7fee1",
+  "rounds": 10,
+  "warmups": 1,
+  "disable_flag": "none",
+  "out_dir": "docs/performance/2026-04-26-p-02-fast-varint",
+  "note": "Initial run flagged the improvement as a regression due to a sign-convention bug in scripts/compare.py; re-ran compare with the corrected gate. The summary and aggregate.json reflect the corrected verdict (PASS, 1 improvement)."
+}

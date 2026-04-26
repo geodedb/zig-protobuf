@@ -3,6 +3,16 @@ const std = @import("std");
 
 const protobuf = @import("protobuf.zig");
 const builtin = @import("builtin");
+const build_options = @import("build_options");
+
+/// Compile-time switch for the P-02 fast-path varint decoder. When
+/// false, `decodeScalar` for variable-width types falls back to the
+/// pure byte-at-a-time loop (the slow path that lived here before
+/// the optimization). The AB runner toggles this via
+/// `-Duse-fast-varint=false` for the disabled run; see
+/// docs/performance/2026-04-26-encode-decode-baseline/architecture.md
+/// §9 ("A/B feature-flag contract").
+pub const use_fast_varint: bool = build_options.use_fast_varint;
 const log = if (builtin.os.tag != .freestanding) std.log.scoped(.zig_protobuf) else struct {
     // no-op log implementation for freestanding targets
     pub fn debug(
@@ -259,14 +269,48 @@ pub fn decodeScalar(
             if (scalar == .int32) byte_count = 10;
             break :b byte_count;
         };
-        const consumed = for (0..max_bytes) |i| {
-            const b = try reader.takeByte();
-            const num = b & 0x7F;
-            val |= @as(Result, num) << @intCast(7 * i);
-            if (b >> 7 == 0) break i + 1;
-        } else {
-            @branchHint(.cold);
-            return error.InvalidInput;
+
+        // P-02 fast-path: when the next `max_bytes` are already
+        // sitting in the reader's buffer, decode them inline without
+        // per-byte `try takeByte()` error-return overhead. Single- and
+        // two-byte varints are by far the hottest cases on real
+        // protobuf payloads (small field numbers, small enums,
+        // boolean flags), and the fast-path turns each into a
+        // branchless few-instruction sequence.
+        const consumed: usize = consumed: {
+            if (comptime use_fast_varint) {
+                const buffered = reader.buffered();
+                if (buffered.len >= max_bytes) {
+                    // Hot path: enough bytes in buffer to decode
+                    // without any further reader interaction.
+                    inline for (0..max_bytes) |i| {
+                        const b = buffered[i];
+                        const num = b & 0x7F;
+                        val |= @as(Result, num) << @intCast(7 * i);
+                        if (b >> 7 == 0) {
+                            reader.toss(i + 1);
+                            break :consumed i + 1;
+                        }
+                    } else {
+                        // Tenth byte's high bit set on a 10-byte
+                        // varint is malformed.
+                        @branchHint(.cold);
+                        return error.InvalidInput;
+                    }
+                }
+                // Short-buffer fall-through: at least one byte must
+                // come via takeByte; let the slow loop handle it.
+            }
+
+            break :consumed for (0..max_bytes) |i| {
+                const b = try reader.takeByte();
+                const num = b & 0x7F;
+                val |= @as(Result, num) << @intCast(7 * i);
+                if (b >> 7 == 0) break i + 1;
+            } else {
+                @branchHint(.cold);
+                return error.InvalidInput;
+            };
         };
 
         // As `int32` may receive `int64` equivalent encoding values, ensure

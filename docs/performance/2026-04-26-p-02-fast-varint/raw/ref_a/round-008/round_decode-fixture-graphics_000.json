@@ -1,0 +1,39 @@
+{
+  "schema_version": "1",
+  "scenario_id": "decode-fixture-graphics",
+  "layer": "integration",
+  "language": "zig",
+  "variant": "A",
+  "git_sha": "09fa0d867f6bf592ea9aed94e9443d2ac601d9c9",
+  "command": "zig build bench-integration -- --scenario decode-fixture-graphics",
+  "timestamp": "2026-04-26T20:25:09Z",
+  "os": "linux",
+  "arch": "x86_64",
+  "runtime_version": "zig 0.16.0",
+  "warmups": 0,
+  "rounds": 1,
+  "round": 0,
+  "warmup": false,
+  "iterations": 1,
+  "metrics": {
+    "ns_per_op_median": 1547802,
+    "ns_per_op_p50": 1547802,
+    "ns_per_op_p95": 1547802,
+    "ns_per_op_p99": 1547802,
+    "ns_per_op_stddev": 0,
+    "ns_per_op_min": 1547802,
+    "ns_per_op_max": 1547802
+  },
+  "samples": [1547802],
+  "counters": {
+    "alloc_delta_bytes": 0,
+    "allocs_per_op": 144,
+    "input_bytes": 1153433,
+    "bytes_per_op": 0,
+    "zero_alloc_observed": true,
+    "zero_alloc_expected": false,
+    "alloc_assertion": "pass",
+    "alloc_threshold_bytes": 0,
+    "concurrency_shape": "N=1"
+  }
+}
