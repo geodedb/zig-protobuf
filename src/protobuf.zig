@@ -178,14 +178,21 @@ pub fn fd(comptime field_number: ?u32, comptime ftype: FieldType) FieldDescripto
 
 /// Writes an unsigned varint value.
 /// Awaits a u64 value as it's the biggest unsigned varint possible,
-// so anything can be cast to it by definition
+/// so anything can be cast to it by definition. Buffers the encoded
+/// bytes on the stack and emits them with a single `writer.writeAll`
+/// to avoid one writer-vtable dispatch per byte (P-07).
 fn writeRawVarint(writer: anytype, value: u64) !void {
+    var buf: [10]u8 = undefined;
+    var n: usize = 0;
     var copy = value;
     while (copy > 0x7F) {
-        try writer.writeByte(0x80 + @as(u8, @intCast(copy & 0x7F)));
-        copy = copy >> 7;
+        buf[n] = 0x80 | @as(u8, @intCast(copy & 0x7F));
+        n += 1;
+        copy >>= 7;
     }
-    try writer.writeByte(@as(u8, @intCast(copy & 0x7F)));
+    buf[n] = @as(u8, @intCast(copy & 0x7F));
+    n += 1;
+    try writer.writeAll(buf[0..n]);
 }
 
 /// Writes a varint.
@@ -240,9 +247,12 @@ fn writeVarint(
 }
 
 /// Writes a fixed size int.
-/// Takes care of casting any signed/float value to an appropriate unsigned type
+/// Takes care of casting any signed/float value to an appropriate unsigned
+/// type, then emits the little-endian bytes with a single `writer.writeAll`
+/// to avoid one writer-vtable dispatch per byte (P-07).
 fn writeFixed(writer: anytype, value: anytype) !void {
     const bitsize = @bitSizeOf(@TypeOf(value));
+    const byte_count = bitsize / 8;
 
     var as_unsigned_int = switch (@TypeOf(value)) {
         f32, f64, i32, i64 => @as(std.meta.Int(.unsigned, bitsize), @bitCast(value)),
@@ -250,12 +260,14 @@ fn writeFixed(writer: anytype, value: anytype) !void {
         else => @compileError("Invalid type for append_fixed"),
     };
 
-    var index: usize = 0;
-
-    while (index < (bitsize / 8)) : (index += 1) {
-        try writer.writeByte(@as(u8, @truncate(as_unsigned_int)));
-        as_unsigned_int = as_unsigned_int >> 8;
+    var buf: [8]u8 = undefined;
+    inline for (0..8) |i| {
+        if (i < byte_count) {
+            buf[i] = @as(u8, @truncate(as_unsigned_int));
+            as_unsigned_int >>= 8;
+        }
     }
+    try writer.writeAll(buf[0..byte_count]);
 }
 
 /// Writes a submessage.
@@ -725,27 +737,30 @@ fn dupeField(
         .repeated => |repeated| {
             const capacity = @field(original, field_name).items.len;
             var list = try @TypeOf(@field(original, field_name)).initCapacity(allocator, capacity);
+            // Capacity is exact, so every append below uses
+            // `appendAssumeCapacity` (P-10) — saves a per-element
+            // bounds check.
             switch (repeated) {
                 .submessage => {
                     for (@field(original, field_name).items) |item| {
-                        try list.append(allocator, try dupeImpl(@TypeOf(item), item, allocator, depth + 1));
+                        list.appendAssumeCapacity(try dupeImpl(@TypeOf(item), item, allocator, depth + 1));
                     }
                 },
                 .scalar => |scalar| switch (scalar) {
                     .string, .bytes => {
                         for (@field(original, field_name).items) |item| {
-                            try list.append(allocator, try item.dupe(allocator));
+                            list.appendAssumeCapacity(try item.dupe(allocator));
                         }
                     },
                     else => {
                         for (@field(original, field_name).items) |item| {
-                            try list.append(allocator, item);
+                            list.appendAssumeCapacity(item);
                         }
                     },
                 },
                 .@"enum" => {
                     for (@field(original, field_name).items) |item| {
-                        try list.append(allocator, item);
+                        list.appendAssumeCapacity(item);
                     }
                 },
             }
@@ -756,7 +771,7 @@ fn dupeField(
             var list = try @TypeOf(@field(original, field_name)).initCapacity(allocator, capacity);
 
             for (@field(original, field_name).items) |item| {
-                try list.append(allocator, item);
+                list.appendAssumeCapacity(item);
             }
 
             return list;
