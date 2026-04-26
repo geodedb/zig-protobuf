@@ -1,86 +1,6 @@
 const std = @import("std");
-const build_options = @import("build_options");
 
 const protobuf = @import("protobuf.zig");
-
-/// Compile-time switch for the P-08 fast JSON key dispatch. When true,
-/// `parse` (and the oneof key dispatch) build a comptime length-bucketed
-/// switch over field names, narrowing the candidate set before any
-/// `std.mem.eql` runs. When false, both fall back to the original
-/// O(N) linear scan over all fields per input key. AB-disable via
-/// `-Duse-fast-json-key-dispatch=false`.
-pub const use_fast_json_key_dispatch: bool = build_options.use_fast_json_key_dispatch;
-
-/// Comptime-built dispatch for matching an input JSON key to one of
-/// `Self`'s fields. Returns the field index if the key matches the
-/// field's snake_case name or its camelCase form, or `null` if no
-/// field matches. The match table is constructed at compile time and
-/// dispatches via `switch (field_name.len)` so a length mismatch
-/// short-circuits without a single byte comparison.
-fn matchFieldIndex(comptime Self: type, field_name: []const u8) ?usize {
-    @setEvalBranchQuota(1_000_000);
-    const fields = @typeInfo(Self).@"struct".fields;
-
-    const NameRef = struct {
-        name: []const u8,
-        index: usize,
-    };
-
-    // Group field-name aliases by length at comptime so the
-    // switch-on-length below has dense cases for the lengths the
-    // schema actually uses.
-    const max_len = comptime b: {
-        var m: usize = 0;
-        for (fields) |f| {
-            if (f.name.len > m) m = f.name.len;
-            const cc = to_camel_case(f.name);
-            if (cc.len > m) m = cc.len;
-        }
-        break :b m;
-    };
-
-    const buckets: [max_len + 1][]const NameRef = comptime b: {
-        var counts = [_]usize{0} ** (max_len + 1);
-        for (fields) |f| {
-            counts[f.name.len] += 1;
-            const cc = to_camel_case(f.name);
-            if (!std.mem.eql(u8, f.name, cc)) {
-                counts[cc.len] += 1;
-            }
-        }
-
-        var bk: [max_len + 1][]const NameRef = undefined;
-        for (0..max_len + 1) |l| {
-            var entries: [counts[l]]NameRef = undefined;
-            var idx: usize = 0;
-            for (fields, 0..) |f, fi| {
-                if (f.name.len == l) {
-                    entries[idx] = .{ .name = f.name, .index = fi };
-                    idx += 1;
-                }
-                const cc = to_camel_case(f.name);
-                if (cc.len == l and !std.mem.eql(u8, f.name, cc)) {
-                    entries[idx] = .{ .name = cc, .index = fi };
-                    idx += 1;
-                }
-            }
-            const final = entries;
-            bk[l] = &final;
-        }
-        break :b bk;
-    };
-
-    if (field_name.len > max_len) return null;
-    inline for (0..max_len + 1) |l| {
-        if (l == field_name.len) {
-            inline for (buckets[l]) |entry| {
-                if (std.mem.eql(u8, entry.name, field_name)) return entry.index;
-            }
-            return null;
-        }
-    }
-    return null;
-}
 
 /// Parse a generated protobuf struct value from a `std.json.Reader`-shaped
 /// source. Accepts both proto-style (`snake_case`) and protobuf-JSON-canonical
@@ -120,116 +40,67 @@ pub fn parse(
             },
         };
 
-        // P-08 fast key dispatch: comptime length-bucketed switch
-        // narrows the candidate set to fields whose snake_case or
-        // camelCase form has the same length as the input key.
-        const matched_idx: ?usize = if (comptime use_fast_json_key_dispatch)
-            matchFieldIndex(Self, field_name)
-        else null;
+        inline for (structInfo.fields, 0..) |field, i| {
+            if (field.is_comptime) {
+                @compileError("comptime fields are not supported: " ++ @typeName(Self) ++ "." ++ field.name);
+            }
 
-        if (comptime use_fast_json_key_dispatch) {
-            if (matched_idx) |mi| {
-                inline for (structInfo.fields, 0..) |field, i| {
-                    if (field.is_comptime) {
-                        @compileError("comptime fields are not supported: " ++ @typeName(Self) ++ "." ++ field.name);
-                    }
-                    if (i == mi) {
-                        freeAllocated(allocator, name_token.?);
-                        name_token = null;
-                        if (fields_seen[i]) {
-                            switch (options.duplicate_field_behavior) {
-                                .use_first => {
-                                    try parseStructField(
-                                        Self,
-                                        &result,
-                                        field,
-                                        allocator,
-                                        source,
-                                        options,
-                                    );
-                                    break;
-                                },
-                                .@"error" => return error.DuplicateField,
-                                .use_last => {},
-                            }
-                        }
-                        try parseStructField(
-                            Self,
-                            &result,
-                            field,
-                            allocator,
-                            source,
-                            options,
-                        );
-                        fields_seen[i] = true;
-                        break;
-                    }
-                }
+            const yes1 = std.mem.eql(u8, field.name, field_name);
+            const camel_case_name = comptime to_camel_case(field.name);
+            var yes2: bool = undefined;
+            if (comptime std.mem.eql(u8, field.name, camel_case_name)) {
+                yes2 = false;
             } else {
-                // Didn't match anything.
+                yes2 = std.mem.eql(u8, camel_case_name, field_name);
+            }
+
+            if (yes1 and yes2) {
+                return error.UnexpectedToken;
+            } else if (yes1 or yes2) {
+                // Free the name token now in case we're using an
+                // allocator that optimizes freeing the last
+                // allocated object. (Recursing into innerParse()
+                // might trigger more allocations.)
                 freeAllocated(allocator, name_token.?);
-                if (options.ignore_unknown_fields) {
-                    try source.skipValue();
-                } else {
-                    return error.UnknownField;
+                name_token = null;
+                if (fields_seen[i]) {
+                    switch (options.duplicate_field_behavior) {
+                        .use_first => {
+                            // Parse and ignore the redundant value.
+                            // We don't want to skip the value,
+                            // because we want type checking.
+                            try parseStructField(
+                                Self,
+                                &result,
+                                field,
+                                allocator,
+                                source,
+                                options,
+                            );
+                            break;
+                        },
+                        .@"error" => return error.DuplicateField,
+                        .use_last => {},
+                    }
                 }
+                try parseStructField(
+                    Self,
+                    &result,
+                    field,
+                    allocator,
+                    source,
+                    options,
+                );
+                fields_seen[i] = true;
+                break;
             }
         } else {
-            inline for (structInfo.fields, 0..) |field, i| {
-                if (field.is_comptime) {
-                    @compileError("comptime fields are not supported: " ++ @typeName(Self) ++ "." ++ field.name);
-                }
-
-                const yes1 = std.mem.eql(u8, field.name, field_name);
-                const camel_case_name = comptime to_camel_case(field.name);
-                var yes2: bool = undefined;
-                if (comptime std.mem.eql(u8, field.name, camel_case_name)) {
-                    yes2 = false;
-                } else {
-                    yes2 = std.mem.eql(u8, camel_case_name, field_name);
-                }
-
-                if (yes1 and yes2) {
-                    return error.UnexpectedToken;
-                } else if (yes1 or yes2) {
-                    freeAllocated(allocator, name_token.?);
-                    name_token = null;
-                    if (fields_seen[i]) {
-                        switch (options.duplicate_field_behavior) {
-                            .use_first => {
-                                try parseStructField(
-                                    Self,
-                                    &result,
-                                    field,
-                                    allocator,
-                                    source,
-                                    options,
-                                );
-                                break;
-                            },
-                            .@"error" => return error.DuplicateField,
-                            .use_last => {},
-                        }
-                    }
-                    try parseStructField(
-                        Self,
-                        &result,
-                        field,
-                        allocator,
-                        source,
-                        options,
-                    );
-                    fields_seen[i] = true;
-                    break;
-                }
+            // Didn't match anything.
+            freeAllocated(allocator, name_token.?);
+            if (options.ignore_unknown_fields) {
+                try source.skipValue();
             } else {
-                // Didn't match anything.
-                freeAllocated(allocator, name_token.?);
-                if (options.ignore_unknown_fields) {
-                    try source.skipValue();
-                } else {
-                    return error.UnknownField;
-                }
+                return error.UnknownField;
             }
         }
     }
