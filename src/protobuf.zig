@@ -14,6 +14,17 @@ pub const wire = @import("wire.zig");
 /// "Observability" section for details.
 pub const observability = @import("observability.zig");
 
+/// otel bootstrap helper. Only resolves to a real namespace when
+/// `-Dwith_otel=true`; otherwise it is an empty struct so referencing
+/// `protobuf.observability_init` from a default-flag build is a no-op.
+/// The init helper itself imports `otel`, which is why we gate the
+/// `@import` — pulling it in unconditionally would break the
+/// disabled-flag build, which has no `otel` module on the import path.
+pub const observability_init = if (@import("build_options").with_otel)
+    @import("observability_init.zig")
+else
+    struct {};
+
 /// Compile-time switch for the P-04 inline packed-list writers. When
 /// true, `writePackedFixedList`, `writePackedVarintList`,
 /// `writePackedEnumList`, and `writePackedStringList` compute the
