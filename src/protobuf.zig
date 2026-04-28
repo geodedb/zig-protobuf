@@ -4,6 +4,16 @@ const build_options = @import("build_options");
 pub const json = @import("json.zig");
 pub const wire = @import("wire.zig");
 
+/// otel observability seam. When `-Dwith_otel=false` (the default), every
+/// function in this namespace collapses to a comptime no-op and no otel
+/// symbols are emitted. When `-Dwith_otel=true`, calls forward into the
+/// `otel` package. protobuf itself does not call the seam; it is exposed
+/// so consumers can wire observability around their own encode/decode
+/// call sites if useful, and so that a `with_otel=true` build still
+/// links cleanly. See `src/observability.zig` and the README's
+/// "Observability" section for details.
+pub const observability = @import("observability.zig");
+
 /// Compile-time switch for the P-04 inline packed-list writers. When
 /// true, `writePackedFixedList`, `writePackedVarintList`,
 /// `writePackedEnumList`, and `writePackedStringList` compute the

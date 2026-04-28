@@ -58,6 +58,17 @@ pub fn build(b: *std.Build) !void {
         "Enable the P-09 direct JSON encode (default: true)",
     ) orelse true;
 
+    // -Dwith_otel=<bool> compiles in the otel observability seam. When
+    // false (the default), the otel dependency is never resolved and no
+    // otel symbols are imported — the static library link contains zero
+    // `otel`/`observability` symbols. Verified by
+    // otel/scripts/verify-consumer-noop.sh.
+    const with_otel = b.option(
+        bool,
+        "with_otel",
+        "Compile in otel instrumentation (off by default; zero overhead when off)",
+    ) orelse false;
+
     // Helper that builds a fresh build_options module. Each consumer
     // (lib root_module, protobuf module, every test artifact, every
     // bench exe) gets its own instance so they can be tuned
@@ -72,6 +83,7 @@ pub fn build(b: *std.Build) !void {
             ensure_capacity_packed: bool,
             fast_json_key_dispatch: bool,
             direct_json_encode: bool,
+            otel_enabled: bool,
         ) *std.Build.Module {
             const bo = bb.addOptions();
             bo.addOption(bool, "use_fast_varint", fast_varint);
@@ -81,6 +93,7 @@ pub fn build(b: *std.Build) !void {
             bo.addOption(bool, "use_ensure_capacity_packed", ensure_capacity_packed);
             bo.addOption(bool, "use_fast_json_key_dispatch", fast_json_key_dispatch);
             bo.addOption(bool, "use_direct_json_encode", direct_json_encode);
+            bo.addOption(bool, "with_otel", otel_enabled);
             return bo.createModule();
         }
     }.create;
@@ -94,6 +107,7 @@ pub fn build(b: *std.Build) !void {
         opt_use_ensure_capacity_packed,
         opt_use_fast_json_key_dispatch,
         opt_use_direct_json_encode,
+        with_otel,
     );
 
     const lib = b.addLibrary(.{
@@ -120,16 +134,29 @@ pub fn build(b: *std.Build) !void {
         .target = target,
         .optimize = optimize,
     });
-    module.addImport("build_options", buildProtobufOptions(
-        b,
-        opt_use_fast_varint,
-        opt_use_single_pass_submessage,
-        opt_use_fast_tag_dispatch,
-        opt_use_inline_packed_write,
-        opt_use_ensure_capacity_packed,
-        opt_use_fast_json_key_dispatch,
-        opt_use_direct_json_encode,
-    ));
+    // Share `lib_options` with the protobuf module so any compile unit
+    // that pulls in BOTH (e.g. an observability test that imports
+    // `protobuf` and `build_options`) sees a single `build_options`
+    // module instance. Reaching the same source file via two distinct
+    // module instances is a hard compile error in Zig.
+    module.addImport("build_options", lib_options);
+
+    // When -Dwith_otel=true, resolve the otel dependency and surface it
+    // to the protobuf module so `src/observability.zig` can pull
+    // `@import("otel")`. The lazy() call only triggers a fetch when the
+    // flag is true; the disabled build never reaches the dependency
+    // resolver, so the otel package never shows up on disk. protobuf
+    // itself does not call any seam function — the seam is exposed for
+    // consumer-side wiring and forward compatibility.
+    if (with_otel) {
+        if (b.lazyDependency("otel", .{
+            .target = target,
+            .optimize = optimize,
+        })) |otel_dep| {
+            module.addImport("otel", otel_dep.module("otel"));
+            lib.root_module.addImport("otel", otel_dep.module("otel"));
+        }
+    }
 
     const exe = build_util.buildGenerator(b, .{
         .target = target,
@@ -225,6 +252,14 @@ pub fn build(b: *std.Build) !void {
                 .optimize = optimize,
             }),
         }),
+        b.addTest(.{
+            .name = "observability_disabled",
+            .root_module = b.createModule(.{
+                .root_source_file = b.path("tests/observability_disabled_test.zig"),
+                .target = target,
+                .optimize = optimize,
+            }),
+        }),
     };
 
     const convertStep = RunProtocStep.create(b, target, .{
@@ -246,6 +281,25 @@ pub fn build(b: *std.Build) !void {
         // `@import("protobuf")` from generated `.pb.zig`.
         if (!std.mem.eql(u8, "protobuf", test_item.name)) {
             test_item.root_module.addImport("protobuf", module);
+        }
+
+        // The observability tests directly inspect `build_options.with_otel`
+        // (the seam disabled-no-op test reads the flag to assert
+        // default-false; the enabled smoke test reads it to gate skip).
+        // We reuse the same `lib_options` module the protobuf module
+        // already pulls in — Zig refuses to compile a translation unit
+        // that reaches the same source file via two distinct module
+        // instances, so we must share, not re-create.
+        if (std.mem.startsWith(u8, test_item.name, "observability_")) {
+            test_item.root_module.addImport("build_options", lib_options);
+            if (with_otel) {
+                if (b.lazyDependency("otel", .{
+                    .target = target,
+                    .optimize = optimize,
+                })) |otel_dep| {
+                    test_item.root_module.addImport("otel", otel_dep.module("otel"));
+                }
+            }
         }
 
         // This creates a build step. It will be visible in the `zig build --help` menu,
