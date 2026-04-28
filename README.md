@@ -70,6 +70,46 @@ pub fn build(b: *std.Build) !void {
 }
 ```
 
+## Observability
+
+zig-protobuf carries an opt-in OpenTelemetry seam exposed at
+`protobuf.observability` (and a bootstrap helper at
+`protobuf.observability_init`). It is **off by default**; building or
+depending on protobuf without any extra flags emits zero
+otel/observability symbols and never resolves the otel package.
+
+To compile in the seam:
+
+```sh
+zig build test -Dwith_otel=true
+# or, when consuming protobuf as a dependency:
+zig build -Dwith_otel=true
+```
+
+When the flag is on, the otel package is fetched lazily from the pinned
+SHA in `build.zig.zon` (`.otel`). When it is off, the verifier
+`otel/scripts/verify-consumer-noop.sh` confirms no `otel`/`observability`
+symbols leak into protobuf's static link.
+
+**protobuf does not emit any spans of its own.** Encoding and decoding
+are value-shape operations with no natural span surface, and adding one
+unconditionally would tie protobuf's hot path to OTLP overhead even
+when an embedder doesn't want it. The seam is exposed for two reasons:
+
+1. **Forward compatibility**: a future protobuf operation that genuinely
+   warrants a span (e.g. a streaming codec with externally observable
+   boundaries) can call into the seam without re-plumbing the package
+   manifest, build flags, or symbols.
+2. **Consumer wiring**: applications that embed protobuf inside an
+   OpenTelemetry-aware service can use `protobuf.observability` to
+   instrument their own protobuf encode/decode call sites with the
+   same conventions and helpers the rest of the devnw/zig stack uses.
+
+See `src/observability.zig` for the seam surface and
+`src/observability_init.zig` for the bootstrap helper. The integration
+recipe lives at `otel/docs/integration/RECIPE.md` in the otel
+repository.
+
 -------
 
 The zig-protobuf logo is licensed under the Attribution 4.0 International (CC BY 4.0).
