@@ -1,3 +1,6 @@
 .zig-cache/
 zig-out/
 zig-pkg/
+
+# Local git worktrees (per-feature isolated checkouts)
+.worktrees/
