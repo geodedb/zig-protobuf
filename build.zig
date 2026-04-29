@@ -113,6 +113,7 @@ pub fn build(b: *std.Build) !void {
             otel_enabled: bool,
         ) *std.Build.Module {
             const bo = bb.addOptions();
+            bo.addOption([]const u8, "package_name", "protobuf");
             bo.addOption(bool, "use_fast_varint", fast_varint);
             bo.addOption(bool, "use_single_pass_submessage", single_pass_submessage);
             bo.addOption(bool, "use_fast_tag_dispatch", fast_tag_dispatch);
