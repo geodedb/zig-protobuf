@@ -111,6 +111,17 @@ pub fn build(b: *std.Build) !void {
             fast_json_key_dispatch: bool,
             direct_json_encode: bool,
             otel_enabled: bool,
+            // Optional bench-layer label. When non-null, the resulting
+            // `build_options` module exposes a `bench_layer` string the
+            // bench harness reads to filter scenarios. Lib + test
+            // consumers pass null. Including the option (rather than
+            // omitting it for non-bench callers) keeps the FIELD SET
+            // identical across all builders so cached options.zig
+            // outputs differ only by content, never by which `build_options`
+            // members exist — that prevents the dedup-mismatch that
+            // breaks `observability.zig`'s `build_options.with_otel`
+            // import when the cached file is reused across consumers.
+            bench_layer: ?[]const u8,
         ) *std.Build.Module {
             const bo = bb.addOptions();
             bo.addOption([]const u8, "package_name", "protobuf");
@@ -122,6 +133,9 @@ pub fn build(b: *std.Build) !void {
             bo.addOption(bool, "use_fast_json_key_dispatch", fast_json_key_dispatch);
             bo.addOption(bool, "use_direct_json_encode", direct_json_encode);
             bo.addOption(bool, "with_otel", otel_enabled);
+            // Always emit `bench_layer` so every consumer sees the same
+            // set of fields. Non-bench builders pass an empty string.
+            bo.addOption([]const u8, "bench_layer", bench_layer orelse "");
             return bo.createModule();
         }
     }.create;
@@ -136,6 +150,7 @@ pub fn build(b: *std.Build) !void {
         opt_use_fast_json_key_dispatch,
         opt_use_direct_json_encode,
         with_otel,
+        null,
     );
 
     const lib = b.addLibrary(.{
@@ -448,15 +463,18 @@ pub fn build(b: *std.Build) !void {
     inline for (bench_specs) |spec| {
         const step = b.step(spec.step_name, spec.description);
 
-        const bo = b.addOptions();
-        bo.addOption(bool, "use_fast_varint", opt_use_fast_varint);
-        bo.addOption(bool, "use_single_pass_submessage", opt_use_single_pass_submessage);
-        bo.addOption(bool, "use_fast_tag_dispatch", opt_use_fast_tag_dispatch);
-        bo.addOption(bool, "use_inline_packed_write", opt_use_inline_packed_write);
-        bo.addOption(bool, "use_ensure_capacity_packed", opt_use_ensure_capacity_packed);
-        bo.addOption(bool, "use_fast_json_key_dispatch", opt_use_fast_json_key_dispatch);
-        bo.addOption(bool, "use_direct_json_encode", opt_use_direct_json_encode);
-        bo.addOption([]const u8, "bench_layer", spec.layer_label);
+        const bench_options_mod = buildProtobufOptions(
+            b,
+            opt_use_fast_varint,
+            opt_use_single_pass_submessage,
+            opt_use_fast_tag_dispatch,
+            opt_use_inline_packed_write,
+            opt_use_ensure_capacity_packed,
+            opt_use_fast_json_key_dispatch,
+            opt_use_direct_json_encode,
+            with_otel,
+            spec.layer_label,
+        );
 
         const bench_exe = b.addExecutable(.{
             .name = spec.step_name,
@@ -469,7 +487,7 @@ pub fn build(b: *std.Build) !void {
         bench_exe.root_module.addImport("protobuf", module);
         bench_exe.root_module.addImport("vector_tile.pb.zig", vector_tile_module);
         bench_exe.root_module.addImport("graphics.pb.zig", graphics_module);
-        bench_exe.root_module.addImport("build_options", bo.createModule());
+        bench_exe.root_module.addImport("build_options", bench_options_mod);
 
         const run = b.addRunArtifact(bench_exe);
         if (spec.argv.len > 0) run.addArgs(spec.argv);
@@ -482,15 +500,18 @@ pub fn build(b: *std.Build) !void {
     // the smoke command from the prior README still works.
     const legacy_step = b.step("bench", "Alias for bench-micro (legacy entry point)");
     {
-        const bo = b.addOptions();
-        bo.addOption(bool, "use_fast_varint", opt_use_fast_varint);
-        bo.addOption(bool, "use_single_pass_submessage", opt_use_single_pass_submessage);
-        bo.addOption(bool, "use_fast_tag_dispatch", opt_use_fast_tag_dispatch);
-        bo.addOption(bool, "use_inline_packed_write", opt_use_inline_packed_write);
-        bo.addOption(bool, "use_ensure_capacity_packed", opt_use_ensure_capacity_packed);
-        bo.addOption(bool, "use_fast_json_key_dispatch", opt_use_fast_json_key_dispatch);
-        bo.addOption(bool, "use_direct_json_encode", opt_use_direct_json_encode);
-        bo.addOption([]const u8, "bench_layer", "micro");
+        const legacy_bench_options_mod = buildProtobufOptions(
+            b,
+            opt_use_fast_varint,
+            opt_use_single_pass_submessage,
+            opt_use_fast_tag_dispatch,
+            opt_use_inline_packed_write,
+            opt_use_ensure_capacity_packed,
+            opt_use_fast_json_key_dispatch,
+            opt_use_direct_json_encode,
+            with_otel,
+            "micro",
+        );
 
         const legacy_bench_exe = b.addExecutable(.{
             .name = "bench",
@@ -503,7 +524,7 @@ pub fn build(b: *std.Build) !void {
         legacy_bench_exe.root_module.addImport("protobuf", module);
         legacy_bench_exe.root_module.addImport("vector_tile.pb.zig", vector_tile_module);
         legacy_bench_exe.root_module.addImport("graphics.pb.zig", graphics_module);
-        legacy_bench_exe.root_module.addImport("build_options", bo.createModule());
+        legacy_bench_exe.root_module.addImport("build_options", legacy_bench_options_mod);
 
         const run = b.addRunArtifact(legacy_bench_exe);
         run.addArgs(&.{ "--rounds", "1", "--warmups", "0", "--out", "raw/" });
