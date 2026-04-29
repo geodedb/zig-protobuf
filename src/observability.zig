@@ -17,7 +17,15 @@
 const std = @import("std");
 const build_options = @import("build_options");
 
-pub const enabled: bool = build_options.with_otel;
+// `build_options.with_otel` is the canonical signal. We defensively check
+// `@hasDecl` because zig 0.16's module-graph dedup can route this file's
+// `@import("build_options")` to a build_options module that lacks the
+// `with_otel` decl when the `protobuf` module is reached through a
+// transitive path (e.g., a downstream consumer with `-Dwith_otel=true`
+// that nonetheless feeds an alternate build_options module into this
+// file). The seam stays a comptime-known no-op when the decl is absent —
+// the consumer never sees emit calls in either direction.
+pub const enabled: bool = @hasDecl(build_options, "with_otel") and build_options.with_otel;
 
 const otel = if (enabled) @import("otel") else struct {};
 
