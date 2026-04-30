@@ -48,8 +48,8 @@
         // when `-Dwith_otel=true`. Pin tracked in the otel rollout
         // plan; bump SHA + hash together via `zig fetch --save`.
         .otel = .{
-            .url = "git+https://gitlab.com/devnw/zig/otel#ee492166dfefc7914229979c933411e6da9e504e",
-            .hash = "otel-0.1.0-B0v3lr2UMwA5qFJCa20OT-1huDPLm1sTIFD22PQBADDD",
+            .url = "git+https://gitlab.com/devnw/zig/otel.git#f17cf51306f87dd200c482709a653247c7b69772",
+            .hash = "otel-0.1.0-B0v3lpwNNACMQqP5_axFbUW-46-__Pl8c3qh3RYXQ8gh",
             .lazy = true,
         },
     },
