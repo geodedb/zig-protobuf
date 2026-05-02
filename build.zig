@@ -63,11 +63,7 @@ pub fn build(b: *std.Build) !void {
     // otel symbols are imported — the static library link contains zero
     // `otel`/`observability` symbols. Verified by
     // otel/scripts/verify-consumer-noop.sh.
-    const with_otel = b.option(
-        bool,
-        "with_otel",
-        "Compile in otel instrumentation (off by default; zero overhead when off)",
-    ) orelse false;
+    const with_otel = false; // 2026-05-02: hardcoded after removing the lazy otel dep — see build.zig.zon header note.
 
     // Forward otel build options so the upstream package is configured
     // identically across all consumers in the build graph. Without this,

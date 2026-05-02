@@ -42,16 +42,6 @@
             .hash = "N-V-__8AADKo3ADb6qHynR1iiBhHFQcaoAE0qpLZuh3GtoT2",
             .lazy = true,
         },
-        // otel observability seam. Lazy, so a default-flag build
-        // (`-Dwith_otel=false`) never resolves or fetches the package.
-        // Reached by `b.lazyDependency("otel", ...)` in build.zig only
-        // when `-Dwith_otel=true`. Pin tracked in the otel rollout
-        // plan; bump SHA + hash together via `zig fetch --save`.
-        .otel = .{
-            .url = "git+https://gitlab.com/devnw/zig/otel.git#7deab7fa53ff47f3e01b934ea01a139bcfed0c72",
-            .hash = "otel-0.1.0-B0v3lrgNNABguHBo8K_wuApcbbDJzyV0iUu2U0E4tLao",
-            .lazy = true,
-        },
     },
     .paths = .{
         "build.zig",
