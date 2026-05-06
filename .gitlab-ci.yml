@@ -1,4 +1,8 @@
 default:
+  # Pin to self-hosted Linux so jobs don't fall through to GitLab SaaS minutes.
+  tags:
+    - company
+    - linux
   image: debian:bookworm-slim
   before_script:
     - apt-get update -qq
