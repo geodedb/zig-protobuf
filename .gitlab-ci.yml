@@ -1,4 +1,3 @@
----
 default:
   # Pin to self-hosted Linux so jobs don't fall through to GitLab SaaS minutes.
   tags:
