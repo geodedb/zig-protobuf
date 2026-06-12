@@ -43,8 +43,11 @@ fn decodeOne(_: void, smith: *std.testing.Smith) anyerror!void {
 test "fuzz wire decoder" {
     // Seed corpus candidates (populate when std.testing.fuzz gains
     // corpus-dir support on this toolchain):
-    //   - long run of 0x0B (unknown sgroup) → exercises PB-2026-001
-    //     group-recursion depth cap.
+    //   - long run of 0x13 (field 2, sgroup) → an *unknown* field number on
+    //     `WithSubmessages` (only field 1 is defined), so it routes through
+    //     skipField and exercises the PB-2026-001 group-recursion depth cap.
+    //     (A known field number such as 0x0B = field 1 would hit the
+    //     wire-type mismatch guard before reaching skipField.)
     //   - tag 0x0A followed by FF FF FF FF 0F (negative length prefix)
     //     → exercises PB-2026-002 negative-length guard.
     //   - the tests/fixtures/*.bin binaries as well-formed seeds.
