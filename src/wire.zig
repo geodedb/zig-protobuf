@@ -486,11 +486,49 @@ pub fn decodeRepeated(
     ).pointer.child;
     comptime std.debug.assert(ResultList == std.ArrayListUnmanaged(Result));
 
-    const current_capacity = result.capacity;
-    errdefer result.shrinkAndFree(allocator, current_capacity);
-
-    const current_items = result.items.len;
-    errdefer result.shrinkRetainingCapacity(current_items);
+    // On any error the partially-decoded message is abandoned by the
+    // caller — `protobuf.decode` returns the error WITHOUT deiniting
+    // `result` — so this call owns full cleanup of the accumulated list
+    // (its elements AND its backing storage). The per-element errdefers
+    // in the branches below (slice `free`, submessage `deinit`) own the
+    // single in-flight element appended during THIS call; this errdefer
+    // first drops the elements appended during this call so those
+    // per-element errdefers are not double-freed, then deinitializes
+    // every previously-committed element and frees the list. Leaving the
+    // list `.empty` keeps any higher-level deinit a no-op (CWE-401 leak
+    // and double-free safe). The old "restore to entry capacity"
+    // errdefer (`shrinkAndFree(current_capacity)`) was unsound: it
+    // asserts `new_len <= items.len`, which fails whenever this call is
+    // entered with capacity slack (any 2nd+ packed record, or the Nth
+    // element of an unpacked repeated string/submessage), and it leaked
+    // the previously-committed elements regardless.
+    const entry_items = result.items.len;
+    errdefer {
+        // Per-element errdefers below already freed the in-flight
+        // element's owned memory; drop its now-dangling slot(s) so the
+        // element-aware deinit loop does not touch it again.
+        if (result.items.len > entry_items) {
+            result.shrinkRetainingCapacity(entry_items);
+        }
+        // Free every element committed before this call, then the list.
+        switch (comptime field) {
+            .scalar => |scalar| {
+                if (comptime scalar.isSlice()) {
+                    for (result.items) |item| {
+                        if (item.len > 0) allocator.free(item);
+                    }
+                }
+            },
+            .submessage => {
+                for (result.items) |*item| {
+                    item.deinit(allocator);
+                }
+            },
+            .@"enum" => {},
+        }
+        result.deinit(allocator);
+        result.* = .empty;
+    }
 
     switch (comptime field) {
         .scalar => |scalar| {
@@ -547,11 +585,15 @@ pub fn decodeRepeated(
                 while (consumed < bytes) {
                     const decoded, const c = try decodeScalar(scalar, reader);
                     try result.append(allocator, decoded);
-                    if (comptime !use_ensure_capacity_packed) {
-                        if (result.items.len > max_decode_elements) {
-                            @branchHint(.cold);
-                            return error.InvalidInput;
-                        }
+                    // Cumulative cap: a packed field may span multiple wire
+                    // records that concatenate into `result`, so this checks
+                    // the persistent accumulator, not just this record. The
+                    // pre-loop guard only bounds a single record's count, so
+                    // this check must run regardless of the reservation flag
+                    // (CWE-789 cross-record amplification).
+                    if (result.items.len > max_decode_elements) {
+                        @branchHint(.cold);
+                        return error.InvalidInput;
                     }
                     consumed += c;
                 }
@@ -595,11 +637,12 @@ pub fn decodeRepeated(
                     const raw, const c = try decodeScalar(.int32, reader);
                     const decoded: Result = @enumFromInt(raw);
                     try result.append(allocator, decoded);
-                    if (comptime !use_ensure_capacity_packed) {
-                        if (result.items.len > max_decode_elements) {
-                            @branchHint(.cold);
-                            return error.InvalidInput;
-                        }
+                    // Cumulative cap across records — see the packed scalar
+                    // path above; must run regardless of the reservation flag
+                    // (CWE-789 cross-record amplification).
+                    if (result.items.len > max_decode_elements) {
+                        @branchHint(.cold);
+                        return error.InvalidInput;
                     }
                     consumed += c;
                 }

@@ -253,7 +253,10 @@ test "decode: packed enum reservation is capped on loose varint payloads" {
     // ArrayList amortized growth covers the rest. We assert the final
     // capacity tracks the element count, staying far below the wire byte
     // count (which the unfixed code would have reserved up front).
-    const n: usize = 200_000;
+    // n is well below max_decode_elements (1M) so this exercises the
+    // reservation cap, not the element cap — n*5 bytes (500k) stays clear of
+    // the per-record byte guard regardless of future constant tweaks.
+    const n: usize = 100_000;
     var src: tests.Packed = .{};
     defer src.deinit(std.testing.allocator);
     var i: usize = 0;
@@ -275,4 +278,115 @@ test "decode: packed enum reservation is capped on loose varint payloads" {
     try std.testing.expectEqual(n, decoded.enum_list.items.len);
     try std.testing.expect(decoded.enum_list.capacity < 2 * n);
     try std.testing.expect(decoded.enum_list.capacity < w.written().len);
+}
+
+test "decode hardening: packed scalar cumulative element cap across records" {
+    // A packed repeated field may legally be split across multiple wire
+    // records that concatenate into one list. The cumulative element cap
+    // (max_decode_elements = 1M) must hold ACROSS records, not just per
+    // record: the per-record pre-loop guard only bounds a single record,
+    // so the in-loop accumulator check is the sole defense against
+    // cross-record growth (CWE-789). Encode one record of 600k single-byte
+    // int32 values, then decode two copies back-to-back (1.2M > 1M).
+    var src: tests.Packed = .{};
+    defer src.deinit(std.testing.allocator);
+    var i: usize = 0;
+    while (i < 600_000) : (i += 1) {
+        try src.int32_list.append(std.testing.allocator, @intCast(i % 128));
+    }
+
+    var w: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer w.deinit();
+    try src.encode(&w.writer, std.testing.allocator);
+
+    // Two packed records for field 1 back-to-back.
+    var input: std.ArrayList(u8) = .empty;
+    defer input.deinit(std.testing.allocator);
+    try input.appendSlice(std.testing.allocator, w.written());
+    try input.appendSlice(std.testing.allocator, w.written());
+
+    var reader: std.Io.Reader = .fixed(input.items);
+    try std.testing.expectError(
+        error.InvalidInput,
+        tests.Packed.decode(&reader, std.testing.allocator),
+    );
+}
+
+test "decode hardening: packed enum cumulative element cap across records" {
+    // Mirror of the packed-scalar cross-record test for the packed ENUM
+    // path: a packed repeated enum may also be split across multiple wire
+    // records that concatenate into one list, so the in-loop accumulator
+    // check is the sole defense against cross-record growth (CWE-789).
+    // Encode one record of 600k single-byte enum values (SE_ZERO = 0
+    // encodes as a 1-byte varint), then decode two copies back-to-back
+    // (1.2M > max_decode_elements = 1M). The error must fire mid-loop on
+    // the second record without leaking the ~600k already-committed
+    // elements or crashing in the error-cleanup path.
+    var src: tests.Packed = .{};
+    defer src.deinit(std.testing.allocator);
+    var i: usize = 0;
+    while (i < 600_000) : (i += 1) {
+        try src.enum_list.append(std.testing.allocator, .SE_ZERO);
+    }
+
+    var w: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer w.deinit();
+    try src.encode(&w.writer, std.testing.allocator);
+
+    // Two packed records for field 10 (enum_list) back-to-back.
+    var input: std.ArrayList(u8) = .empty;
+    defer input.deinit(std.testing.allocator);
+    try input.appendSlice(std.testing.allocator, w.written());
+    try input.appendSlice(std.testing.allocator, w.written());
+
+    var reader: std.Io.Reader = .fixed(input.items);
+    try std.testing.expectError(
+        error.InvalidInput,
+        tests.Packed.decode(&reader, std.testing.allocator),
+    );
+}
+
+test "decode hardening: error mid-list frees committed repeated-string elements" {
+    // Regression for the latent crash/leak in decodeRepeated's error
+    // cleanup. WithRepeatedStrings.name is `repeated string` (field 1),
+    // so decodeMessage calls decodeRepeated once per element — the Nth
+    // call enters with N-1 committed elements AND grown capacity
+    // (capacity > items). Encode several valid elements, then one element
+    // whose length prefix exceeds max_decode_alloc_per_field (16 MiB), so
+    // the decoder errors BEFORE allocating the huge body. The cleanup
+    // path must (a) not crash (the old shrinkAndFree(current_capacity)
+    // asserted new_len <= items.len and panicked on the capacity slack),
+    // and (b) free the already-committed string elements so the abandoned
+    // result leaks nothing (testing.allocator catches both).
+    const WithRepeatedStrings = tests.WithRepeatedStrings;
+
+    var input: std.ArrayList(u8) = .empty;
+    defer input.deinit(std.testing.allocator);
+
+    // Eight valid 3-byte string elements: tag 0x0A, len 0x03, "abc".
+    var k: usize = 0;
+    while (k < 8) : (k += 1) {
+        try input.appendSlice(
+            std.testing.allocator,
+            &.{ 0x0A, 0x03, 'a', 'b', 'c' },
+        );
+    }
+    // Ninth element: tag 0x0A, then a varint length of 32 MiB (> 16 MiB
+    // cap) — rejected before the body is allocated.
+    try input.append(std.testing.allocator, 0x0A);
+    const big: u64 = 32 * 1024 * 1024;
+    var v = big;
+    while (v >= 0x80) : (v >>= 7) {
+        try input.append(
+            std.testing.allocator,
+            @as(u8, @intCast(v & 0x7F)) | 0x80,
+        );
+    }
+    try input.append(std.testing.allocator, @as(u8, @intCast(v)));
+
+    var reader: std.Io.Reader = .fixed(input.items);
+    try std.testing.expectError(
+        error.InvalidInput,
+        WithRepeatedStrings.decode(&reader, std.testing.allocator),
+    );
 }
