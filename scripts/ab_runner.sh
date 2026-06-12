@@ -134,7 +134,7 @@ BENCH_GIT_SHA="${SHA_A:0:7}->${SHA_B:0:7}" \
 
 # Build both bench-ci binaries fresh.
 echo "ab_runner: building ref_a bench-ci" >&2
-( cd "$WORKTREE_A" && zig build bench-ci -Doptimize=ReleaseSafe --help >/dev/null 2>&1 ) || true
+( cd "$WORKTREE_A" && zig build bench-ci -Doptimize=ReleaseFast --help >/dev/null 2>&1 ) || true
 # We don't actually invoke bench-ci through `zig build` because that would run
 # the bench too; instead we drop down to the raw exe so we can override --out.
 # But the easiest portable path is to invoke `zig build bench-ci -- --rounds 0
@@ -145,7 +145,7 @@ echo "ab_runner: building ref_a bench-ci" >&2
 build_one() {
     local wt=$1; shift
     local extra_d=("$@")
-    ( cd "$wt" && zig build bench-ci -Doptimize=ReleaseSafe "${extra_d[@]}" -- --rounds 1 --warmups 0 --out /tmp/bench-warmup-build/ >/dev/null )
+    ( cd "$wt" && zig build bench-ci -Doptimize=ReleaseFast "${extra_d[@]}" -- --rounds 1 --warmups 0 --out /tmp/bench-warmup-build/ >/dev/null )
     rm -rf /tmp/bench-warmup-build
 }
 
@@ -163,7 +163,7 @@ run_variant() {
     local round=$4
     local extra_d=("${@:5}")
     BENCH_GIT_SHA="$sha" \
-        env -C "$wt" zig build bench-ci -Doptimize=ReleaseSafe "${extra_d[@]}" -- \
+        env -C "$wt" zig build bench-ci -Doptimize=ReleaseFast "${extra_d[@]}" -- \
             --rounds 1 --warmups 0 \
             --out "$REPO_ROOT/$OUT_DIR/raw/$label/round-$(printf '%03d' "$round")/" \
         >/dev/null
@@ -197,8 +197,8 @@ cat > "$OUT_DIR/commands.sh" <<EOF
 # disable_flag=${DISABLE_FLAG:-none}
 git worktree add --detach $WORKTREE_A $SHA_A
 git worktree add --detach $WORKTREE_B $SHA_B
-( cd $WORKTREE_A && zig build bench-ci -Doptimize=ReleaseSafe -- --rounds $ROUNDS --warmups $WARMUPS --out raw/ref_a/ )
-( cd $WORKTREE_B && zig build bench-ci -Doptimize=ReleaseSafe ${B_BUILD_FLAGS[*]:-} -- --rounds $ROUNDS --warmups $WARMUPS --out raw/ref_b/ )
+( cd $WORKTREE_A && zig build bench-ci -Doptimize=ReleaseFast -- --rounds $ROUNDS --warmups $WARMUPS --out raw/ref_a/ )
+( cd $WORKTREE_B && zig build bench-ci -Doptimize=ReleaseFast ${B_BUILD_FLAGS[*]:-} -- --rounds $ROUNDS --warmups $WARMUPS --out raw/ref_b/ )
 git worktree remove $WORKTREE_A
 git worktree remove $WORKTREE_B
 python3 scripts/compare.py --dir $OUT_DIR/raw/ref_b --baseline-dir $OUT_DIR/raw/ref_a --gate
