@@ -5,8 +5,35 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-06-12
+
+Output of an iterative defensive AppSec + full-audit pass (5 review
+iterations to convergence): decoder hardening, a cross-record
+allocation-cap fix with element-aware error cleanup, plus performance,
+quality, and CI/supply-chain improvements. 154/155 tests pass (1 intentional
+skip) under both decode build configurations.
+
 ### Security
 
+- **Unbounded recursion in `skipField` group-skip → stack-exhaustion DoS
+  (CWE-674).** The proto2 group-skip path now shares the `max_decode_depth`
+  budget; deeply-nested unknown `sgroup` tags return `error.InvalidInput`.
+  (PB-2026-001)
+- **Missing negative-length guard on repeated/packed length prefix → panic
+  DoS (CWE-704/755).** Added `if (len < 0) return error.InvalidInput` before
+  `@intCast(len)` on the `.repeated`/`.packed_repeated` branches, matching
+  the string/submessage/oneof branches. (PB-2026-002)
+- **CI toolchain integrity (CWE-494).** The pipeline pins and verifies the
+  Zig tarball SHA-256 (`sha256sum -c`) before extraction, failing closed on
+  mismatch. (PB-2026-003)
+- **Cross-record element-count amplification + latent error-cleanup
+  crash/leak (CWE-789/401/617).** The cumulative `max_decode_elements` cap is
+  now enforced across multiple wire records for a packed field, and
+  `decodeRepeated`'s error cleanup was rewritten to be element-aware — no
+  leak, double-free, or crash on any mid-list decode error. (PB-2026-006)
+- Widened the fuzz harness (64 KiB input window, documented corpus classes)
+  and defaulted `json.parse`'s `max_value_len` to avoid a panic on
+  caller-supplied null options (CWE-476). (PB-2026-004, PB-2026-005)
 - Fixed double-free in `decodeRepeated` slice path that could be
   reached on `repeated bytes` / `repeated string` decode under
   `result.append` OOM. Eliminated a heap-corruption / RCE primitive.
@@ -17,6 +44,26 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/
   (N1, commit `92c5a59`)
 - `Tag.decode` rejects field number 0 per the protobuf spec (CWE-20).
   (N8, commit `a13c854`)
+
+### Performance
+
+- Bench harness defaults to `ReleaseFast` (the Zig 0.16 ICE workaround is no
+  longer needed); the A/B runner is aligned. Invalidates the 2026-04-26
+  ReleaseSafe baseline — capture a fresh `zig build bench-ci` baseline before
+  the next A/B comparison. (P-2026-01)
+- Capped eager packed-list reservation (`max_decode_reserve_elements`) to
+  avoid up-to-10x over-allocation on multi-byte varint enums/scalars.
+  (P-2026-02)
+- Removed a duplicate bench scenario and fixed `bytes_per_op` reporting.
+  (P-2026-04, P-2026-05)
+
+### Changed
+
+- Extended the `zig fmt` gate to `bench/` and `bootstrapped-generator/`;
+  made the CI/pre-commit YAML yamllint-clean (added a repo `.yamllint`);
+  resolved shellcheck findings in `scripts/ab_runner.sh`; documented the
+  AB-flag fallback paths; fixed CONTRIBUTING/markdownlint nits.
+  (Q-2026-01..08)
 
 ### Fixed
 
