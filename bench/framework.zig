@@ -481,9 +481,9 @@ fn emitRecord(
     try w.print("    \"ns_per_op_max\": {d}\n", .{result.metrics.ns_per_op_max});
     try w.writeAll("  },\n");
 
-    try w.writeAll("  \"samples\": [");
-    try w.print("{d}", .{result.metrics.ns_per_op_median});
-    try w.writeAll("],\n");
+    // Single-value summary: the median ns/op for this round. (Per-iteration
+    // distribution is not retained beyond the percentile metrics above.)
+    try w.print("  \"median_sample\": {d},\n", .{result.metrics.ns_per_op_median});
 
     try w.writeAll("  \"counters\": {\n");
     try w.print("    \"alloc_delta_bytes\": {d},\n", .{result.alloc_delta_bytes});
