@@ -1,7 +1,7 @@
 # Security Gap Analysis — devnw/zig/protobuf
 
 **Generated:** 2026-04-26
-**Last updated:** 2026-06-12 (iteration-1 appsec review: 5 findings found AND closed)
+**Last updated:** 2026-06-12 (iter-1 appsec: 5 found+closed; iter-2 review found+closed PB-2026-006, a cross-record cap regression + latent errdefer crash/leak)
 **Scope:** entire repo
 **Library type:** Pure protobuf encode/decode + protoc plugin (`protoc-gen-zig`)
 
@@ -14,6 +14,7 @@
 | PB-2026-003 | Low | Medium | CI fetched and executed the Zig toolchain via `curl … \| tar` with no checksum verification. Fixed: pinned `ZIG_SHA256` (70e49664…), download-to-file + `sha256sum -c` before extract, fail closed on mismatch. | .gitlab-ci.yml | CWE-494 | **Closed** (`ea5ddef`) |
 | PB-2026-004 | Low | Low | Fuzz harness input cap (4096-byte `buf`) bounded recursion below the PB-2026-001 overflow threshold and lacked corpus seeds. Fixed: raised the cap to 64 KiB and documented seed-corpus candidates (long `0x0B` run; `FF FF FF FF 0F` prefix). | tests/fuzz_decode.zig | CWE-1108 | **Closed** (`74280d9`) |
 | PB-2026-005 | Low | Low | `json.parse` unwrapped `options.max_value_len.?` at two sites; a caller-supplied `ParseOptions` with `max_value_len == null` panicked. Fixed: `orelse std.json.default_max_value_len` at both sites, matching std.json's resolver. Regression test added. | src/json.zig:31,388 | CWE-476 | **Closed** (`88c2408`) |
+| PB-2026-006 | High | High | **Found in iteration-2 review.** Two coupled decode bugs: (a) the P-2026-03 change gated the packed scalar/enum in-loop element-count check, removing the only guard against *cross-record* cumulative growth — a packed field split across many wire records grew unbounded (1.2M elements decoded with no error; CWE-789); and (b) the S3 cleanup errdefer `shrinkAndFree(allocator, current_capacity)` crashed (`new_len <= items.len` assertion) AND leaked previously-committed elements on **any** mid-list decode error where the list had capacity slack (any 2nd+ packed record or Nth unpacked element) — a pre-existing latent crash/leak since `protobuf.decode` abandons the partial result without deinit. Fixed: restored unconditional cumulative checks; replaced the errdefer with element-aware full cleanup (drop in-flight slot, deinit committed owned elements, free list, reset `.empty`). Regression tests: cross-record cap (scalar+enum), mid-list error frees committed strings. | src/wire.zig (decodeRepeated) | CWE-789, CWE-401, CWE-617 | **Closed** (`90f601e`) |
 
 ## Summary
 
