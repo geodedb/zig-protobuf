@@ -229,6 +229,7 @@ pub fn measureRound(
     io: std.Io,
     allocator: std.mem.Allocator,
     iterations: u64,
+    input_bytes: u64,
     counting: ?*CountingAllocator,
     comptime CtxType: type,
     ctx: *CtxType,
@@ -298,7 +299,7 @@ pub fn measureRound(
         .iterations = iterations,
         .alloc_delta_bytes = alloc_delta,
         .allocs_per_op = allocs_per_op,
-        .bytes_per_op = 0,
+        .bytes_per_op = input_bytes,
         .zero_alloc_observed = alloc_delta == 0,
     };
 }
@@ -359,13 +360,13 @@ pub fn driveScenario(
 
     var w: u32 = 0;
     while (w < warmups) : (w += 1) {
-        const result = try measureRound(io, allocator, iterations, counting, CtxType, ctx, body);
+        const result = try measureRound(io, allocator, iterations, scenario.input_bytes, counting, CtxType, ctx, body);
         try writeRoundFile(io, allocator, opts.out_dir, opts.git_sha, scenario, true, w, &result, iterations);
     }
 
     var r: u32 = 0;
     while (r < rounds) : (r += 1) {
-        const result = try measureRound(io, allocator, iterations, counting, CtxType, ctx, body);
+        const result = try measureRound(io, allocator, iterations, scenario.input_bytes, counting, CtxType, ctx, body);
         try writeRoundFile(io, allocator, opts.out_dir, opts.git_sha, scenario, false, r, &result, iterations);
 
         if (scenario.zero_alloc_expected and !result.zero_alloc_observed) {
@@ -393,7 +394,7 @@ pub fn smokeScenario(
     // Smoke uses a tiny iteration count so even a slow scenario fits
     // within the smoke budget.
     const iterations: u64 = @min(scenario.default_iterations, 1000);
-    _ = try measureRound(io, allocator, iterations, counting, CtxType, ctx, body);
+    _ = try measureRound(io, allocator, iterations, scenario.input_bytes, counting, CtxType, ctx, body);
 }
 
 fn writeRoundFile(
