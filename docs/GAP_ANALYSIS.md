@@ -27,14 +27,13 @@ Sorted by current status (Open / Closed / Deferred), then by Gap-ID.
 
 ### Open
 
-| Gap-ID | Severity | Category | Effort | Title | File:Line | Status |
-|--------|----------|----------|--------|-------|-----------|--------|
-| GAP-PB-007 (encode side) | High | encoder | Medium | proto2 group encode-side support | src/protobuf.zig (no group encode) | Read-side closed via N1 (`92c5a59`); encode-side remains for full proto2 compat |
+_None._ All previously-open requirement gaps are closed or formally deferred (Won't Do).
 
 ### Deferred (Won't Do this run)
 
 | Gap-ID | Severity | Reason |
 |--------|----------|--------|
+| GAP-PB-007 (encode side) | High | proto2 group **encode** support. Groups are a deprecated proto2 wire feature; the generator emits no group fields (no `TYPE_GROUP` handling) and no consumer requires encoding them. Decode-side safely skips unknown groups and is now depth-capped (`PB-2026-001`, this run). Won't Do until a concrete consumer requirement appears; reclassify to a tracked feature request at that point. |
 | GAP-PB-005 | High | Maps first-class — large feature, schedule independently |
 | GAP-PB-006 | High | JSON well-known types (Timestamp/Duration/Any/...) — large multi-PR feature |
 | GAP-PB-010 | High | proto3 conformance harness — large infrastructure; schedule after GAP-PB-005/006 |
