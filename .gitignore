@@ -9,3 +9,6 @@ zig-pkg/
 raw/
 __pycache__/
 *.pyc
+
+# Local superpowers planning artifacts (session scratch)
+docs/superpowers/
