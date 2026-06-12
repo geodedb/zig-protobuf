@@ -531,9 +531,11 @@ pub fn decodeRepeated(
                 while (consumed < bytes) {
                     const decoded, const c = try decodeScalar(scalar, reader);
                     try result.append(allocator, decoded);
-                    if (result.items.len > max_decode_elements) {
-                        @branchHint(.cold);
-                        return error.InvalidInput;
+                    if (comptime !use_ensure_capacity_packed) {
+                        if (result.items.len > max_decode_elements) {
+                            @branchHint(.cold);
+                            return error.InvalidInput;
+                        }
                     }
                     consumed += c;
                 }
@@ -574,9 +576,11 @@ pub fn decodeRepeated(
                     const raw, const c = try decodeScalar(.int32, reader);
                     const decoded: Result = @enumFromInt(raw);
                     try result.append(allocator, decoded);
-                    if (result.items.len > max_decode_elements) {
-                        @branchHint(.cold);
-                        return error.InvalidInput;
+                    if (comptime !use_ensure_capacity_packed) {
+                        if (result.items.len > max_decode_elements) {
+                            @branchHint(.cold);
+                            return error.InvalidInput;
+                        }
                     }
                     consumed += c;
                 }
