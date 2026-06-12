@@ -178,22 +178,6 @@ fn runDecodeFixtureGraphics(
     );
 }
 
-fn runDecodeFixtureGraphicsDeep(
-    io: std.Io,
-    allocator: std.mem.Allocator,
-    opts: framework.RunOptions,
-    scenario: *const framework.Scenario,
-) !void {
-    try runFixtureScenario(
-        io,
-        allocator,
-        opts,
-        scenario,
-        "tests/fixtures/graphics.bin",
-        decodeGraphicsBody,
-    );
-}
-
 fn runJsonEncodeFixtureVectorTile(
     io: std.Io,
     allocator: std.mem.Allocator,
@@ -272,14 +256,6 @@ pub const all = [_]framework.Scenario{
         .default_iterations = 1,
         .input_bytes = 1_153_433,
         .run = runDecodeFixtureGraphics,
-    },
-    .{
-        .id = "decode-fixture-graphics-deep",
-        .layer = .integration,
-        .zero_alloc_expected = false,
-        .default_iterations = 1,
-        .input_bytes = 1_153_433,
-        .run = runDecodeFixtureGraphicsDeep,
     },
     .{
         .id = "json-encode-fixture-vector-tile",
