@@ -1047,3 +1047,19 @@ test "JSON: encodeToWriter matches encode (P-09)" {
 
     try expectEqualSlices(u8, reference, aw.written());
 }
+
+test "JSON: parse with null max_value_len does not panic" {
+    // A caller passing a hand-built ParseOptions where max_value_len is
+    // null must not panic on the options.max_value_len.? unwrap. Use the
+    // FixedSizes generated type and a minimal empty object.
+    const FixedSizes = @import("./generated/tests.pb.zig").FixedSizes;
+    var scanner = json.Scanner.initCompleteInput(allocator, "{}");
+    defer scanner.deinit();
+    var parsed = try protobuf.json.parse(
+        FixedSizes,
+        allocator,
+        &scanner,
+        .{ .max_value_len = null },
+    );
+    defer parsed.deinit(allocator);
+}

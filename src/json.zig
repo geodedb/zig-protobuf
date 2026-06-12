@@ -28,7 +28,7 @@ pub fn parse(
         var name_token: ?std.json.Token = try source.nextAllocMax(
             allocator,
             .alloc_if_needed,
-            options.max_value_len.?,
+            options.max_value_len orelse std.json.default_max_value_len,
         );
         const field_name = switch (name_token.?) {
             inline .string, .allocated_string => |slice| slice,
@@ -385,7 +385,7 @@ fn parseStructField(
             var name_token: ?std.json.Token = try source.nextAllocMax(
                 allocator,
                 .alloc_if_needed,
-                options.max_value_len.?,
+                options.max_value_len orelse std.json.default_max_value_len,
             );
             const field_name = switch (name_token.?) {
                 inline .string, .allocated_string => |slice| slice,
