@@ -364,6 +364,9 @@ fn writePackedFixedList(
         // first append the tag for the field descriptor
         try writeTag(writer, field);
 
+        // AB fallback: the `else` branch below is the pre-P-04 allocating
+        // path, kept only for `-Duse-inline-packed-write=false`. Retire it
+        // once the P-04 inline-write win is accepted into the baseline.
         if (comptime use_inline_packed_write) {
             // P-04 fast path: fixed-width elements. Total payload
             // size is exactly `count * sizeof(elem)`; emit the
@@ -405,6 +408,9 @@ fn writePackedVarintList(
     if (value_list.items.len > 0) {
         try writeTag(writer, field);
 
+        // AB fallback: the `else` branch below is the pre-P-04 allocating
+        // path, kept only for `-Duse-inline-packed-write=false`. Retire it
+        // once the P-04 inline-write win is accepted into the baseline.
         if (comptime use_inline_packed_write) {
             // P-04 fast path: walk once to size, write once direct.
             var size_encoded: u64 = 0;
@@ -440,6 +446,9 @@ fn writePackedEnumList(
     if (value_list.items.len > 0) {
         try writeTag(writer, field);
 
+        // AB fallback: the `else` branch below is the pre-P-04 allocating
+        // path, kept only for `-Duse-inline-packed-write=false`. Retire it
+        // once the P-04 inline-write win is accepted into the baseline.
         if (comptime use_inline_packed_write) {
             var size_encoded: u64 = 0;
             for (value_list.items) |item| {
@@ -489,6 +498,9 @@ fn writePackedStringList(
     if (value_list.items.len > 0) {
         try writeTag(writer, field);
 
+        // AB fallback: the `else` branch below is the pre-P-04 allocating
+        // path, kept only for `-Duse-inline-packed-write=false`. Retire it
+        // once the P-04 inline-write win is accepted into the baseline.
         if (comptime use_inline_packed_write) {
             // P-04 fast path: each entry is `varint(len) + len bytes`.
             // Walk once for size, then write each entry directly.
