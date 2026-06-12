@@ -134,7 +134,7 @@ BENCH_GIT_SHA="${SHA_A:0:7}->${SHA_B:0:7}" \
 
 # Build both bench-ci binaries fresh.
 echo "ab_runner: building ref_a bench-ci" >&2
-( cd "$WORKTREE_A" && zig build bench-ci -Doptimize=ReleaseSafe --help >/dev/null 2>&1 || true )
+( cd "$WORKTREE_A" && zig build bench-ci -Doptimize=ReleaseSafe --help >/dev/null 2>&1 ) || true
 # We don't actually invoke bench-ci through `zig build` because that would run
 # the bench too; instead we drop down to the raw exe so we can override --out.
 # But the easiest portable path is to invoke `zig build bench-ci -- --rounds 0
