@@ -84,7 +84,7 @@ repos:
   hooks:
   - id: markdownlint
     args: [--fix, --disable, MD013, MD033, MD041, MD024, MD060, MD036, MD051, MD052, MD055, --]
-    exclude: ^(vendor/|dist/|CHANGELOG\.md|specs/)
+    exclude: ^(vendor/|dist/|CHANGELOG\.md|specs/|docs/APPSEC_REVIEW_.*\.md)
 
   # =============================================================================
   # YAML formatting

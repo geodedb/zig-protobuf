@@ -23,6 +23,7 @@ zig build test --summary all
    `tests/generated/` and `tests/.generated/` are regenerated. Commit
    the regenerated `.pb.zig` files alongside the schema change.
 3. Run the local equivalent of CI:
+
    ```sh
    zig fmt --check build.zig src/ utils/ \
        bootstrapped-generator/main.zig bootstrapped-generator/FullName.zig \
@@ -33,6 +34,7 @@ zig build test --summary all
    zig build -Doptimize=Debug
    zig build test --summary all
    ```
+
 4. Open a merge request against `master`. The `.gitlab-ci.yml` pipeline
    will run the same three jobs.
 
