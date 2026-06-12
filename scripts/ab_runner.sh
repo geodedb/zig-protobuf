@@ -89,7 +89,7 @@ fi
 
 # Resolve repo root.
 REPO_ROOT=$(git rev-parse --show-toplevel)
-cd "$REPO_ROOT"
+cd "$REPO_ROOT" || { echo "ab_runner: cannot cd to repo root '$REPO_ROOT'" >&2; exit 2; }
 
 if [[ -z "$OUT_DIR" ]]; then
     DATE=$(date -u +%F)
@@ -102,6 +102,7 @@ WORKTREE_A="$WORKTREE_BASE/wt-a-${SHA_A:0:7}"
 WORKTREE_B="$WORKTREE_BASE/wt-b-${SHA_B:0:7}"
 
 # Cleanup helpers.
+# shellcheck disable=SC2317  # body is reached via the EXIT/INT/TERM trap
 cleanup() {
     local code=$?
     set +e
