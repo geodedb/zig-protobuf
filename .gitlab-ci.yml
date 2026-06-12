@@ -31,8 +31,8 @@ fmt:
       build.zig
       src/
       utils/
-      bootstrapped-generator/main.zig
-      bootstrapped-generator/FullName.zig
+      bench/
+      bootstrapped-generator/
       tests/tests.zig
       tests/tests_varints.zig
       tests/tests_fixedsizes.zig
