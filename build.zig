@@ -387,15 +387,17 @@ pub fn build(b: *std.Build) !void {
     // for the architecture and plan that drove this layout.
     //
     // Default to ReleaseFast for meaningful numbers, but allow override
-    // via `-Doptimize=Debug` for development. (As of Zig 0.16.0 the
-    // compiler ICEs on ReleaseFast for this tiny exe; ReleaseSafe is
-    // a safe default that still benefits from the compiler's
-    // optimizations.)
-    // TODO: retry ReleaseFast on the next Zig point release.
+    // via `-Doptimize=Debug` for development. (The Zig 0.16.0 ReleaseFast
+    // ICE that previously forced ReleaseSafe no longer reproduces.)
+    //
+    // NOTE: this default changed from ReleaseSafe to ReleaseFast on
+    // 2026-06-12, which invalidates the 2026-04-26 ReleaseSafe baseline
+    // under docs/performance/. Capture a fresh `zig build bench-ci`
+    // baseline before running any A/B comparison against historical numbers.
     const bench_optimize: std.builtin.OptimizeMode = if (b.user_input_options.contains("optimize"))
         optimize
     else
-        .ReleaseSafe;
+        .ReleaseFast;
 
     // (Feature-flag -D options are declared at the top of build() so
     // both the protobuf module and the bench exes share the same
