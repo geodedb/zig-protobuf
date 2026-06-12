@@ -220,3 +220,59 @@ test "decode hardening: deeply-nested unknown groups rejected" {
 }
 
 // TODO: check for cyclic structure
+
+test "decode: packed enum list with multi-byte values round-trips" {
+    // Packed enum list (Packed.enum_list = field 10, packed). Encode three
+    // enum values requiring multi-byte varints and confirm decode yields
+    // exactly three elements (correctness across 1/2/3-byte varints).
+    var src: tests.Packed = .{};
+    defer src.deinit(std.testing.allocator);
+    try src.enum_list.append(std.testing.allocator, @enumFromInt(300)); // 2-byte varint
+    try src.enum_list.append(std.testing.allocator, @enumFromInt(70000)); // 3-byte varint
+    try src.enum_list.append(std.testing.allocator, @enumFromInt(4)); // 1-byte
+
+    var w: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer w.deinit();
+    try src.encode(&w.writer, std.testing.allocator);
+
+    var reader: std.Io.Reader = .fixed(w.written());
+    var decoded = try tests.Packed.decode(&reader, std.testing.allocator);
+    defer decoded.deinit(std.testing.allocator);
+
+    try std.testing.expectEqual(@as(usize, 3), decoded.enum_list.items.len);
+    try std.testing.expectEqual(@as(i32, 300), @intFromEnum(decoded.enum_list.items[0]));
+    try std.testing.expectEqual(@as(i32, 70000), @intFromEnum(decoded.enum_list.items[1]));
+    try std.testing.expectEqual(@as(i32, 4), @intFromEnum(decoded.enum_list.items[2]));
+}
+
+test "decode: packed enum reservation is capped on loose varint payloads" {
+    // Regression for P-2026-02: the packed enum path reserves one slot per
+    // wire *byte*, but enums are 1-10 byte varints. A byte-heavy payload
+    // (each value a 5-byte varint) must NOT eagerly reserve `bytes` slots;
+    // the up-front reservation is capped at max_decode_reserve_elements and
+    // ArrayList amortized growth covers the rest. We assert the final
+    // capacity tracks the element count, staying far below the wire byte
+    // count (which the unfixed code would have reserved up front).
+    const n: usize = 200_000;
+    var src: tests.Packed = .{};
+    defer src.deinit(std.testing.allocator);
+    var i: usize = 0;
+    while (i < n) : (i += 1) {
+        try src.enum_list.append(std.testing.allocator, @enumFromInt(2_000_000_000)); // 5-byte varint
+    }
+
+    var w: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer w.deinit();
+    try src.encode(&w.writer, std.testing.allocator);
+
+    var reader: std.Io.Reader = .fixed(w.written());
+    var decoded = try tests.Packed.decode(&reader, std.testing.allocator);
+    defer decoded.deinit(std.testing.allocator);
+
+    // Payload is ~5x the element count; capacity must stay proportional to
+    // the element count, not the byte count. A small constant slack over
+    // `n` confirms the eager reservation did not balloon to `bytes`.
+    try std.testing.expectEqual(n, decoded.enum_list.items.len);
+    try std.testing.expect(decoded.enum_list.capacity < 2 * n);
+    try std.testing.expect(decoded.enum_list.capacity < w.written().len);
+}

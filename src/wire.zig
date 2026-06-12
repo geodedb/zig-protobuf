@@ -55,6 +55,14 @@ pub const max_decode_alloc_per_field: usize = 16 * 1024 * 1024;
 /// `ArrayListUnmanaged` growth (CWE-789).
 pub const max_decode_elements: usize = 1_000_000;
 
+/// Upper bound on how many elements we eagerly reserve for a packed list
+/// before falling back to ArrayList's amortized growth. Bounds worst-case
+/// over-reservation when a wire byte count is a loose upper bound on the
+/// element count (multi-byte varint scalars/enums encode 1-10 bytes each,
+/// so `bytes` can be up to 10x the true count). Decoding still succeeds for
+/// larger lists; only the up-front reservation is capped.
+pub const max_decode_reserve_elements: usize = 64 * 1024;
+
 /// Wire type.
 pub const Type = enum(u3) {
     /// int32, int64, uint32, uint64, sint32, sint64, bool, enum
@@ -524,7 +532,15 @@ pub fn decodeRepeated(
                         @branchHint(.cold);
                         return error.InvalidInput;
                     }
-                    try result.ensureTotalCapacity(allocator, result.items.len + expected_count);
+                    // Fixed-width count is exact; reserve it directly. The
+                    // variable-width upper bound (`bytes`) can over-reserve
+                    // up to 10x, so cap eager reservation and let amortized
+                    // growth cover larger lists.
+                    const reserve = if (comptime scalar.isFixed())
+                        expected_count
+                    else
+                        @min(expected_count, max_decode_reserve_elements);
+                    try result.ensureTotalCapacity(allocator, result.items.len + reserve);
                 }
 
                 var consumed: usize = 0;
@@ -561,14 +577,17 @@ pub fn decodeRepeated(
             // Packed repeated enum.
             if (options.bytes) |bytes| {
                 if (comptime use_ensure_capacity_packed) {
-                    // Enums are varint-encoded, so each element is
-                    // 1-10 bytes. Use the minimum-element upper
-                    // bound on count to avoid per-element reallocs.
+                    // Enums are varint-encoded (1-10 bytes each), so the
+                    // wire byte count is a loose upper bound on element
+                    // count — up to 10x too high. Reject obviously-oversized
+                    // payloads, then cap the eager reservation and let
+                    // ArrayList amortized growth cover larger lists.
                     if (bytes > max_decode_elements) {
                         @branchHint(.cold);
                         return error.InvalidInput;
                     }
-                    try result.ensureTotalCapacity(allocator, result.items.len + bytes);
+                    const reserve = @min(bytes, max_decode_reserve_elements);
+                    try result.ensureTotalCapacity(allocator, result.items.len + reserve);
                 }
 
                 var consumed: usize = 0;
