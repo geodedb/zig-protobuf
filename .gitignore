@@ -4,3 +4,8 @@ zig-pkg/
 
 # Local git worktrees (per-feature isolated checkouts)
 .worktrees/
+
+# Local bench output and Python bytecode caches
+raw/
+__pycache__/
+*.pyc
