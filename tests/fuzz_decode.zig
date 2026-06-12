@@ -21,9 +21,12 @@ const tests_pb = @import("./generated/tests.pb.zig");
 const FuzzTarget = tests_pb.WithSubmessages;
 
 fn decodeOne(_: void, smith: *std.testing.Smith) anyerror!void {
-    // Pull up to 4 KiB of fuzzer-controlled bytes. `Smith.slice` fills
-    // the buffer and returns the actual length consumed.
-    var buf: [4096]u8 = undefined;
+    // Pull up to 64 KiB of fuzzer-controlled bytes. The larger window
+    // lets the fuzzer reach depth-class attacks (nested sgroup tags,
+    // PB-2026-001) and negative-length prefixes (PB-2026-002) that a
+    // 4 KiB cap could not surface. `Smith.slice` fills the buffer and
+    // returns the actual length consumed.
+    var buf: [65536]u8 = undefined;
     const n = smith.slice(buf[0..]);
     if (n == 0) return;
 
@@ -38,7 +41,12 @@ fn decodeOne(_: void, smith: *std.testing.Smith) anyerror!void {
 }
 
 test "fuzz wire decoder" {
-    // No seed corpus yet; downstream work can populate one from the
-    // existing tests/fixtures/* binaries.
+    // Seed corpus candidates (populate when std.testing.fuzz gains
+    // corpus-dir support on this toolchain):
+    //   - long run of 0x0B (unknown sgroup) → exercises PB-2026-001
+    //     group-recursion depth cap.
+    //   - tag 0x0A followed by FF FF FF FF 0F (negative length prefix)
+    //     → exercises PB-2026-002 negative-length guard.
+    //   - the tests/fixtures/*.bin binaries as well-formed seeds.
     try std.testing.fuzz({}, decodeOne, .{});
 }
