@@ -196,4 +196,27 @@ test "decode hardening: negative length prefix on unpacked repeated rejected" {
     );
 }
 
+test "decode hardening: deeply-nested unknown groups rejected" {
+    // An unknown field with sgroup wire-type repeated deeper than
+    // max_decode_depth (100) with no matching egroup must return
+    // InvalidInput rather than recursing to stack exhaustion (CWE-674).
+    // We decode into SelfRefNode, whose fields are 1 (version) and 2
+    // (node); field 3 is unknown, so tag 0x1B (field 3, wire sgroup)
+    // routes through skipField, which recurses for each nested sgroup.
+    // (Fields 1/2 would hit the known-field wire-type-mismatch guard and
+    // never reach skipField, so an unknown field number is required to
+    // exercise the recursive path.)
+    var buf: std.ArrayList(u8) = .empty;
+    defer buf.deinit(std.testing.allocator);
+    var i: usize = 0;
+    while (i < 150) : (i += 1) {
+        try buf.append(std.testing.allocator, 0x1B); // field 3, wire sgroup
+    }
+    var reader: std.Io.Reader = .fixed(buf.items);
+    try std.testing.expectError(
+        error.InvalidInput,
+        SelfRefNode.decode(&reader, std.testing.allocator),
+    );
+}
+
 // TODO: check for cyclic structure

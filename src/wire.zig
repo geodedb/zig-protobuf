@@ -1214,16 +1214,20 @@ pub fn decodeMessage(
                             => unreachable,
                         }
                         break :oo_fields;
-                    } else consumed += try skipField(reader, tag);
+                    } else consumed += try skipField(reader, tag, options._depth + 1);
                 },
             }
             comptime break;
-        } else consumed += try skipField(reader, tag);
+        } else consumed += try skipField(reader, tag, options._depth + 1);
     }
     return consumed;
 }
 
-fn skipField(reader: anytype, tag: Tag) DecodeError!usize {
+fn skipField(reader: anytype, tag: Tag, depth: u32) DecodeError!usize {
+    if (depth > max_decode_depth) {
+        @branchHint(.cold);
+        return error.InvalidInput;
+    }
     var consumed: usize = 0;
 
     // If field number was not found, skip unknown field.
@@ -1268,7 +1272,7 @@ fn skipField(reader: anytype, tag: Tag) DecodeError!usize {
                     }
                     break;
                 }
-                consumed += try skipField(reader, inner);
+                consumed += try skipField(reader, inner, depth + 1);
             }
         },
         .egroup => {
