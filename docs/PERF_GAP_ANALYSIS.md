@@ -1,8 +1,19 @@
 # Performance Gap Analysis — devnw/zig/protobuf
 
 **Generated:** 2026-04-26
+**Last updated:** 2026-06-12 (iteration-1 perf scan: 5 findings found AND closed)
 **Scope:** entire repo
 **Library type:** Pure encode/decode library — no I/O loop, no concurrency
+
+## 2026-06-12 Perf Scan — all findings CLOSED
+
+| ID | PerfSeverity | Title | File:Line | Status |
+|----|--------------|-------|-----------|--------|
+| P-2026-01 | P2 | Bench default optimize mode was `ReleaseSafe` behind a stale `TODO: retry ReleaseFast` comment — the Zig 0.16.0 ICE no longer reproduces. Fixed: flipped default to `.ReleaseFast`, removed stale TODO, documented that this invalidates the 2026-04-26 ReleaseSafe baseline (fresh baseline needed before A/B). | build.zig:386-398 | **Closed** (`35b73ff`) |
+| P-2026-02 | P2 | Packed enum/variable-width scalar `ensureTotalCapacity(items.len + bytes)` used wire-byte count as element-count bound → up to 10× over-reservation for multi-byte varints. Fixed: added `max_decode_reserve_elements = 64 KiB` cap on the loose (variable-width/enum) reservation paths; fixed-width stays exact. Regression test (200k-element list) asserts capacity stays proportional. | src/wire.zig:519-527,561-570 | **Closed** (`570df6f`) |
+| P-2026-03 | P3 | Per-element `max_decode_elements` checks inside packed scalar/enum fast-path loops were unreachable when `use_ensure_capacity_packed` (default). Fixed: gated them at comptime under `!use_ensure_capacity_packed` so they compile only in the no-reserve fallback where they remain the sole protection. | src/wire.zig:534,577 | **Closed** (`afd68e7`) |
+| P-2026-04 | P3 | `decode-fixture-graphics-deep` was a byte-for-byte duplicate of `decode-fixture-graphics`. Fixed: deleted the function and registry entry. | bench/scenarios_integration.zig | **Closed** (`81dfee0`) |
+| P-2026-05 | P3 | `RoundResult.bytes_per_op` hardcoded to 0; `scenario.input_bytes` never propagated. Fixed: threaded `input_bytes` through `measureRound` and recorded it. | bench/framework.zig:301 | **Closed** (`e638f3c`) |
 
 ## Baseline
 
@@ -297,4 +308,3 @@ Pair with P-13 alloc counter to report both ns/op and allocs/op per fixture.
 | P-16 | **Open** | — | Generator `std.mem.concat` + per-line `allocPrint`. Build-time only. |
 
 Total: 7 closed (P-02, P-04, P-05, P-07, P-09, P-10, P-11+P-12+P-13 infra), 3 deferred with handoff (P-01, P-03, P-08), 4 open generator/feature items (P-06, P-14, P-15, P-16). Detailed closure entries with measured deltas live in `GAP_ANALYSIS_RESOLVED.md` under "perf sprint #1".
-

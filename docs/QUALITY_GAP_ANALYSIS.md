@@ -1,8 +1,21 @@
 # Code Quality Gap Analysis — devnw/zig/protobuf
 
 **Generated:** 2026-04-26
-**Last updated:** 2026-04-26 (post gap-close run)
+**Last updated:** 2026-06-12 (iteration-1 quality scan: 8 findings found AND closed)
 **Scope:** entire repo
+
+## 2026-06-12 Quality Scan — all findings CLOSED
+
+| ID | Severity | Title | File:Line | Status |
+|----|----------|-------|-----------|--------|
+| Q-2026-01 | Low | yamllint: `.gitlab-ci.yml` document-start + long line. Fixed: long line resolved by PB-2026-003 before_script restructure; document-start reconciled via repo `.yamllint` (rule disabled — pretty-format-yaml strips `---`). yamllint rc=0. | .gitlab-ci.yml | **Closed** (`fed8ba0`) |
+| Q-2026-02 | Low | yamllint: `.pre-commit-config.yaml` indentation/long-line/comment-indentation findings. Fixed: rewrote the 170-col check-todos bash across continuation lines; added a `.yamllint` config aligned to the repo's pretty-format-yaml style (line-length 120, indent-sequences consistent, comments-indentation disabled). yamllint rc=0. | .pre-commit-config.yaml, .yamllint | **Closed** (`e511012`) |
+| Q-2026-03 | Low | markdownlint: `CONTRIBUTING.md` MD031; `docs/APPSEC_REVIEW_2026-06-12.md` 80+ violations. Fixed: blank lines around the CI-command fenced block; excluded `docs/APPSEC_REVIEW_*.md` (generated artifact) from the markdownlint hook. | CONTRIBUTING.md, .pre-commit-config.yaml | **Closed** (`c5cf732`) |
+| Q-2026-04 | Low | `createDirPath` catch block semantically identical to `try`. Fixed: replaced with `try`. | bench/framework.zig:410-413 | **Closed** (`fa8c16e`) |
+| Q-2026-05 | Low | emitted `"samples"` JSON array held only the median singleton. Fixed: renamed to a scalar `"median_sample"` with an explanatory comment. | bench/framework.zig:485-486 | **Closed** (`313d96f`) |
+| Q-2026-06 | Low | fmt gate coverage gaps. Fixed: added `bench/` + `bootstrapped-generator/` to the CI fmt job and `bench/`+`bootstrapped-generator/`+`utils/` to the pre-commit zig-fmt hook. | .gitlab-ci.yml, .pre-commit-config.yaml | **Closed** (`0619235`) |
+| Q-2026-07 | Info | shellcheck: SC2317 trap false-positive + SC2015 `\|\| true` masking a failed `cd`. Fixed: fail-loud `cd \|\| exit`, SC2317 disable directive, and moved `\|\| true` outside the `&&` subshell. `shellcheck --severity=info` rc=0. | scripts/ab_runner.sh | **Closed** (`f7b518f`, `6f95fe2`) |
+| Q-2026-08 | Info | Dead comptime `writePackedXxxList` slow-path branches. Fixed: documented the AB-flag retirement plan at each of the four sites (intentional `-Duse-inline-packed-write=false` fallback, retire post-baseline). | src/protobuf.zig:367,411,449,501 | **Closed** (`f55ebe3`) |
 
 ## Summary
 
@@ -31,7 +44,7 @@ The single highest-impact item by raw size and review pain remains **Q-01** (`de
 
 ## PriorityScore Methodology
 
-```
+```text
 PriorityScore = severity_weight × impact × (likelihood / effort)
 ```
 

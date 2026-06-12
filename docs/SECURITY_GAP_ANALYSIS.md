@@ -1,9 +1,19 @@
 # Security Gap Analysis — devnw/zig/protobuf
 
 **Generated:** 2026-04-26
-**Last updated:** 2026-04-26 (post gap-close run)
+**Last updated:** 2026-06-12 (iteration-1 appsec review: 5 findings found AND closed)
 **Scope:** entire repo
 **Library type:** Pure protobuf encode/decode + protoc plugin (`protoc-gen-zig`)
+
+## 2026-06-12 AppSec Review — all findings CLOSED (see `APPSEC_REVIEW_2026-06-12.md` for full detail)
+
+| ID | Severity | Risk | Title | File:Line | CWE | Status |
+|----|----------|------|-------|-----------|-----|--------|
+| PB-2026-001 | Medium | High | Unbounded recursion in `skipField` group-skip path → stack-exhaustion DoS. `skipField` took no depth parameter; nested unknown `sgroup` tags recursed without the `max_decode_depth` cap that guards `decodeMessage`. Fixed: threaded `depth: u32` through `skipField`, call sites pass `options._depth + 1`, enforce `> max_decode_depth → error.InvalidInput`. Regression test: 150 nested unmatched `0x1B` group tags → `error.InvalidInput` (red `EndOfStream`→green). | src/wire.zig:1217,1248-1264 | CWE-674 | **Closed** (`5fba1d0`) |
+| PB-2026-002 | Medium | High | Missing `if (len < 0)` guard on `.repeated`/`.packed_repeated` length prefix before `@intCast(len)` → panic DoS in Debug/ReleaseSafe. Fixed: added the `if (len < 0) { @branchHint(.cold); return error.InvalidInput; }` guard before each cast, matching the string/submessage/oneof branches. Regression tests: packed + non-packed repeated field with `FF FF FF FF 0F` length prefix → `error.InvalidInput` (red panic→green). | src/wire.zig:834-845,875-879 | CWE-704/755 | **Closed** (`83e3c52`) |
+| PB-2026-003 | Low | Medium | CI fetched and executed the Zig toolchain via `curl … \| tar` with no checksum verification. Fixed: pinned `ZIG_SHA256` (70e49664…), download-to-file + `sha256sum -c` before extract, fail closed on mismatch. | .gitlab-ci.yml | CWE-494 | **Closed** (`ea5ddef`) |
+| PB-2026-004 | Low | Low | Fuzz harness input cap (4096-byte `buf`) bounded recursion below the PB-2026-001 overflow threshold and lacked corpus seeds. Fixed: raised the cap to 64 KiB and documented seed-corpus candidates (long `0x0B` run; `FF FF FF FF 0F` prefix). | tests/fuzz_decode.zig | CWE-1108 | **Closed** (`74280d9`) |
+| PB-2026-005 | Low | Low | `json.parse` unwrapped `options.max_value_len.?` at two sites; a caller-supplied `ParseOptions` with `max_value_len == null` panicked. Fixed: `orelse std.json.default_max_value_len` at both sites, matching std.json's resolver. Regression test added. | src/json.zig:31,388 | CWE-476 | **Closed** (`88c2408`) |
 
 ## Summary
 
@@ -92,23 +102,28 @@ traversal; build-time only).
 ## Findings by Area
 
 ### Wire Decoder (src/wire.zig) — primary attack surface
+
 - **Memory safety:** S3 (double-free).
 - **Resource exhaustion:** S1 (recursion), S2a (alloc cap), S2b (element cap), N1 (CPU loop), N2 (skip-path cap).
 - **Spec conformance / input validation:** S4 (UTF-8), N4 (bool decoding), N8 (field 0).
 - **Numeric:** N3 (32-bit overflow).
 
 ### JSON Parser (src/json.zig)
+
 - **Memory bloat:** N7 (base64 buffer held in arena).
 
 ### Generator (bootstrapped-generator/main.zig)
+
 - **Build-time DoS / panics:** S5 (panics + recursion on adversarial request).
 - **Path traversal:** N13 (package name → FS path).
 
 ### Build / Supply-chain
+
 - **Artifact mismatch:** S6 (`protoc-linux-64` URL points at `win64.zip`; currently dormant orphan).
 - **Trusted-boundary documentation:** S7 (build-time FS ops on developer-supplied paths).
 
 ### Hardening / Test Coverage
+
 - **N16:** No wire-decoder fuzzing harness. Adding one would have surfaced S1, S2a/b, N1 mechanically.
 
 ## Recommended Patches (Phase 3 sketches)
