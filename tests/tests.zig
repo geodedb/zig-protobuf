@@ -390,3 +390,99 @@ test "decode hardening: error mid-list frees committed repeated-string elements"
         WithRepeatedStrings.decode(&reader, std.testing.allocator),
     );
 }
+
+test "decode hardening: error mid-list frees committed repeated-SUBMESSAGE elements" {
+    // Direct regression for the .submessage arm of decodeRepeated's
+    // function-entry errdefer (the `for (result.items) |*item|
+    // item.deinit(allocator);` branch). LogsData.resource_logs is
+    // `repeated ResourceLogs` (field 1, tag 0x0A), so decodeMessage calls
+    // decodeRepeated once per element; each committed ResourceLogs owns a
+    // heap `schema_url` string (field 3, tag 0x1A, an owned []const u8 when
+    // decoded). When a later element errors mid-list, protobuf.decode
+    // abandons the partial result WITHOUT deiniting it, so this errdefer
+    // owns freeing every previously-committed submessage element (its
+    // schema_url string AND the list backing buffer). The packed
+    // scalar/enum arms and the unpacked-string arm already have direct
+    // tests; this exercises the submessage arm so any future
+    // leak/double-free/crash there is caught by testing.allocator.
+    //
+    // Construction: encode a real LogsData with 4 valid ResourceLogs (each
+    // schema_url = a heap-dup'd string, so the SOURCE deinit frees them
+    // legitimately and encode merely copies the bytes), capture its wire
+    // bytes as a valid prefix, then append one hand-built outer record
+    // {0x0A, outer_len, 0x1A, varint(32 MiB)} whose inner schema_url length
+    // prefix exceeds max_decode_alloc_per_field (16 MiB). The inner string
+    // decode rejects that length BEFORE allocating the body, so the decode
+    // errors with InvalidInput while 4 elements are already committed.
+    const n: usize = 4;
+
+    // Build the valid prefix from a real, correctly-owned LogsData value.
+    var src: pblogs.LogsData = .{};
+    defer src.deinit(std.testing.allocator);
+    {
+        var i: usize = 0;
+        while (i < n) : (i += 1) {
+            // Heap-dup the schema_url so src.deinit frees it correctly
+            // (a string literal would make deinit free a non-heap pointer).
+            const url = try std.testing.allocator.dupe(u8, "https://example.test/schema");
+            errdefer std.testing.allocator.free(url);
+            try src.resource_logs.append(
+                std.testing.allocator,
+                .{ .schema_url = url },
+            );
+        }
+    }
+
+    var prefix: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer prefix.deinit();
+    try src.encode(&prefix.writer, std.testing.allocator);
+
+    // Sanity: the valid prefix alone decodes successfully into n elements,
+    // each owning its schema_url, and round-trips leak-free.
+    {
+        var ok_reader: std.Io.Reader = .fixed(prefix.written());
+        var ok = try pblogs.LogsData.decode(&ok_reader, std.testing.allocator);
+        defer ok.deinit(std.testing.allocator);
+        try std.testing.expectEqual(n, ok.resource_logs.items.len);
+        try std.testing.expectEqualSlices(
+            u8,
+            "https://example.test/schema",
+            ok.resource_logs.items[0].schema_url,
+        );
+    }
+
+    // Build the erroring outer record: an outer LogsData.resource_logs
+    // element (tag 0x0A) whose body is a ResourceLogs carrying schema_url
+    // (tag 0x1A) with a length prefix of 32 MiB (> 16 MiB cap). The inner
+    // body bytes {0x1A, varint(32 MiB)} are the outer record's payload.
+    var inner: std.ArrayList(u8) = .empty;
+    defer inner.deinit(std.testing.allocator);
+    try inner.append(std.testing.allocator, 0x1A); // field 3 (schema_url), wire len
+    const big: u64 = 32 * 1024 * 1024;
+    var v = big;
+    while (v >= 0x80) : (v >>= 7) {
+        try inner.append(
+            std.testing.allocator,
+            @as(u8, @intCast(v & 0x7F)) | 0x80,
+        );
+    }
+    try inner.append(std.testing.allocator, @as(u8, @intCast(v)));
+
+    var input: std.ArrayList(u8) = .empty;
+    defer input.deinit(std.testing.allocator);
+    // Valid prefix: 4 committed ResourceLogs elements.
+    try input.appendSlice(std.testing.allocator, prefix.written());
+    // Erroring outer record: tag 0x0A, then the inner body length as a
+    // varint, then the inner body. inner.items.len is small (< 128) so its
+    // length is a single varint byte.
+    try input.append(std.testing.allocator, 0x0A); // field 1, wire len
+    std.debug.assert(inner.items.len < 0x80);
+    try input.append(std.testing.allocator, @as(u8, @intCast(inner.items.len)));
+    try input.appendSlice(std.testing.allocator, inner.items);
+
+    var reader: std.Io.Reader = .fixed(input.items);
+    try std.testing.expectError(
+        error.InvalidInput,
+        pblogs.LogsData.decode(&reader, std.testing.allocator),
+    );
+}
