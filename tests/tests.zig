@@ -169,4 +169,31 @@ test "decode hardening: max_decode_alloc_per_field rejects huge string len" {
     );
 }
 
+test "decode hardening: negative length prefix on packed repeated rejected" {
+    // Packed repeated int32 field (Packed.int32_list = field 1, wire-type
+    // len → tag 0x0A) with a length prefix that decodes as int32 == -1
+    // (the five-byte sequence FF FF FF FF 0F). Must return InvalidInput,
+    // not panic on @intCast(-1) → usize.
+    const Packed = tests.Packed;
+    const buf = [_]u8{ 0x0A, 0xFF, 0xFF, 0xFF, 0xFF, 0x0F };
+    var reader: std.Io.Reader = .fixed(buf[0..]);
+    try std.testing.expectError(
+        error.InvalidInput,
+        Packed.decode(&reader, std.testing.allocator),
+    );
+}
+
+test "decode hardening: negative length prefix on unpacked repeated rejected" {
+    // UnPacked.int32_list (field 1) sent with wire-type len (tag 0x0A) and
+    // a length prefix decoding to int32 == -1. The .repeated branch must
+    // reject before @intCast(len).
+    const UnPacked = tests.UnPacked;
+    const buf = [_]u8{ 0x0A, 0xFF, 0xFF, 0xFF, 0xFF, 0x0F };
+    var reader: std.Io.Reader = .fixed(buf[0..]);
+    try std.testing.expectError(
+        error.InvalidInput,
+        UnPacked.decode(&reader, std.testing.allocator),
+    );
+}
+
 // TODO: check for cyclic structure
