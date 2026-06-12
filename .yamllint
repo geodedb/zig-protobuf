@@ -1,0 +1,22 @@
+# yamllint config aligned to this repo's YAML conventions. The project's
+# pre-commit hooks (check-yaml + pretty-format-yaml) own structural
+# formatting; this config makes `yamllint` agree with that style instead
+# of fighting it.
+extends: default
+
+rules:
+  # pretty-format-yaml strips the `---` document-start marker, so requiring
+  # one would create an unwinnable tug-of-war with the formatter.
+  document-start: disable
+  # Embedded shell snippets in pre-commit hooks and the Zig download URL in
+  # CI legitimately exceed 80 columns.
+  line-length:
+    max: 120
+  # .pre-commit-config.yaml keeps block sequences at their parent key's
+  # indentation (pretty-format-yaml's style); .gitlab-ci.yml indents them.
+  # `consistent` accepts either as long as each file is internally uniform.
+  indentation:
+    spaces: 2
+    indent-sequences: consistent
+  # Banner/section comments are intentionally left-aligned to column 0/3.
+  comments-indentation: disable
