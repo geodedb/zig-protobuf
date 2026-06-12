@@ -409,11 +409,9 @@ fn writeRoundFile(
     iterations: u64,
 ) !void {
     const cwd = std.Io.Dir.cwd();
-    cwd.createDirPath(io, out_dir) catch |err| switch (err) {
-        // PathAlreadyExists isn't an error from createDirPath in 0.16,
-        // but defensively map any unexpected error verbatim.
-        else => return err,
-    };
+    // createDirPath is idempotent in 0.16 (PathAlreadyExists is not an
+    // error); propagate any genuine failure verbatim.
+    try cwd.createDirPath(io, out_dir);
 
     const filename = try std.fmt.allocPrint(
         allocator,
