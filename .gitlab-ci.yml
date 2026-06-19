@@ -1,3 +1,6 @@
+include:
+  - component: gitlab.com/devnw/ci-catalog/zig-version-tag-check@v1.27.0
+
 default:
   # Pin to self-hosted Linux so jobs don't fall through to GitLab SaaS minutes.
   tags:
