@@ -486,3 +486,64 @@ test "decode hardening: error mid-list frees committed repeated-SUBMESSAGE eleme
         pblogs.LogsData.decode(&reader, std.testing.allocator),
     );
 }
+
+test "decode: out-of-range enum wire value on a singular scalar enum field round-trips (proto3 open enum)" {
+    // Generator-emitted enums are non-exhaustive (`enum(i32) { ..., _ }`),
+    // so an unrecognized wire value must be preserved rather than
+    // rejected -- this is the singular-scalar-field counterpart to the
+    // existing packed-enum-list round-trip test above.
+    var src: tests.WithEnum = .{ .value = @enumFromInt(999999999) };
+
+    var w: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer w.deinit();
+    try src.encode(&w.writer, std.testing.allocator);
+
+    var reader: std.Io.Reader = .fixed(w.written());
+    var decoded = try tests.WithEnum.decode(&reader, std.testing.allocator);
+    defer decoded.deinit(std.testing.allocator);
+
+    try std.testing.expectEqual(@as(i32, 999999999), @intFromEnum(decoded.value));
+}
+
+test "decode: out-of-range enum wire value on an EXHAUSTIVE enum field fails closed instead of crashing (CWE-704)" {
+    // Regression for PB-2026-007. `decodeMessage`/`decodeRepeated` reach
+    // enum-typed fields generically via comptime reflection over any
+    // struct with a `_desc_table` -- they are not limited to types the
+    // generator produced. The generator always emits non-exhaustive enums
+    // (safe for `@enumFromInt` on any `i32`), but nothing in the type
+    // system stops a hand-authored struct from declaring an *exhaustive*
+    // enum instead. Before this fix, decoding an out-of-range wire value
+    // into such a field hit `@enumFromInt`'s safety panic (ReleaseSafe) --
+    // undefined behavior in ReleaseFast -- turning malformed/untrusted
+    // input into a process crash. It must now decode-error cleanly.
+    const ExhaustiveEnum = enum(i32) {
+        A = 0,
+        B = 1,
+        // Deliberately exhaustive: no trailing `_,` catch-all variant.
+    };
+
+    const WithExhaustiveEnum = struct {
+        value: ExhaustiveEnum = .A,
+
+        pub const _desc_table = .{
+            .value = protobuf.fd(1, .@"enum"),
+        };
+    };
+
+    // Build wire bytes for "field 1 (enum) = 999_999_999" via the
+    // generator-produced `WithEnum` type, which has the same field
+    // number/wire layout but a non-exhaustive enum, so the out-of-range
+    // value can be constructed and encoded without issue. Wire format only
+    // cares about field number + wire type + varint value, so the bytes
+    // are valid input for `WithExhaustiveEnum.value` too.
+    var src: tests.WithEnum = .{ .value = @enumFromInt(999999999) };
+    var w: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer w.deinit();
+    try src.encode(&w.writer, std.testing.allocator);
+
+    var reader: std.Io.Reader = .fixed(w.written());
+    try std.testing.expectError(
+        error.InvalidInput,
+        protobuf.decode(WithExhaustiveEnum, &reader, std.testing.allocator),
+    );
+}

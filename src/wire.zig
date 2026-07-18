@@ -255,6 +255,60 @@ pub const ZigZag = struct {
     }
 };
 
+/// Safely convert a decoded wire `int32` into an enum-typed field.
+///
+/// Proto3 enums are *open*: an unrecognized value on the wire is not an
+/// error and must round-trip through decode/encode unchanged (see
+/// `docs/GAP_ANALYSIS.md` R10). The code generator therefore always emits
+/// enums as non-exhaustive (`enum(i32) { ..., _ }`), for which
+/// `@enumFromInt` is defined for every `i32` — no runtime check needed,
+/// no panic possible.
+///
+/// `decodeMessage`/`decodeRepeated` reach enum-typed fields generically via
+/// comptime reflection, though, and nothing in the type system stops a
+/// hand-authored struct (bypassing the generator) from declaring an
+/// *exhaustive* enum. `@enumFromInt` on an exhaustive enum panics in safe
+/// build modes (and is undefined behavior in `ReleaseFast`) for any wire
+/// value that isn't a declared tag — an out-of-range value from untrusted
+/// input becomes a process crash (CWE-704). Since an exhaustive enum has no
+/// way to represent an unrecognized value, decoding fails closed with
+/// `error.InvalidInput` in that case instead.
+///
+/// This performs no extra work for the (only currently generated)
+/// non-exhaustive case: the `is_exhaustive` check is resolved entirely at
+/// comptime, so the non-exhaustive branch compiles down to the original
+/// unchecked `@enumFromInt`. (PB-2026-007)
+inline fn enumFromWire(comptime T: type, raw: i32) DecodeError!T {
+    const info = @typeInfo(T).@"enum";
+    if (comptime !info.is_exhaustive) {
+        return @enumFromInt(raw);
+    }
+    inline for (info.fields) |f| {
+        if (raw == f.value) return @field(T, f.name);
+    }
+    return error.InvalidInput;
+}
+
+test enumFromWire {
+    const NonExhaustive = enum(i32) { A = 0, B = 1, _ };
+    const Exhaustive = enum(i32) { A = 0, B = 1 };
+
+    var raw: i32 = 999999999;
+    try std.testing.expectEqual(
+        @as(i32, 999999999),
+        @intFromEnum(try enumFromWire(NonExhaustive, raw)),
+    );
+
+    try std.testing.expectError(
+        error.InvalidInput,
+        enumFromWire(Exhaustive, raw),
+    );
+
+    raw = 1;
+    try std.testing.expectEqual(.B, try enumFromWire(NonExhaustive, raw));
+    try std.testing.expectEqual(.B, try enumFromWire(Exhaustive, raw));
+}
+
 /// Decode a non-slice scalar type from reader. Slice scalar types should be
 /// decoded by directly reading a slice from the reader.
 pub fn decodeScalar(
@@ -635,7 +689,7 @@ pub fn decodeRepeated(
                 var consumed: usize = 0;
                 while (consumed < bytes) {
                     const raw, const c = try decodeScalar(.int32, reader);
-                    const decoded: Result = @enumFromInt(raw);
+                    const decoded: Result = try enumFromWire(Result, raw);
                     try result.append(allocator, decoded);
                     // Cumulative cap across records — see the packed scalar
                     // path above; must run regardless of the reservation flag
@@ -655,7 +709,7 @@ pub fn decodeRepeated(
             // Unpacked repeated enum.
             else {
                 const raw, const consumed = try decodeScalar(.int32, reader);
-                const decoded: Result = @enumFromInt(raw);
+                const decoded: Result = try enumFromWire(Result, raw);
                 try result.append(allocator, decoded);
                 if (result.items.len > max_decode_elements) {
                     @branchHint(.cold);
@@ -872,10 +926,11 @@ pub fn decodeMessage(
                     consumed += c;
                     const decoded = b: {
                         if (comptime field_ti == .optional) {
-                            const val: field_ti.optional.child = @enumFromInt(raw);
+                            const val: field_ti.optional.child =
+                                try enumFromWire(field_ti.optional.child, raw);
                             break :b val;
                         } else {
-                            const val: Field = @enumFromInt(raw);
+                            const val: Field = try enumFromWire(Field, raw);
                             break :b val;
                         }
                     };
@@ -1132,7 +1187,8 @@ pub fn decodeMessage(
                                 const raw, const c =
                                     try decodeScalar(.int32, reader);
                                 consumed += c;
-                                const decoded: oo_field.type = @enumFromInt(raw);
+                                const decoded: oo_field.type =
+                                    try enumFromWire(oo_field.type, raw);
 
                                 // Free potentially existing union field just
                                 // before replacing.

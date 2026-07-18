@@ -5,6 +5,29 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-07-17
+
+### Security
+
+- **Unchecked `@enumFromInt` on decoded enum-typed fields → process crash on
+  malformed wire input (CWE-704).** `decodeMessage`/`decodeRepeated` reach
+  enum-typed fields generically via comptime reflection over any struct
+  with a `_desc_table` — not only types the generator produces. The
+  generator always emits enums as non-exhaustive (`enum(i32) { ..., _ }`),
+  for which `@enumFromInt` is defined for every `i32` (this is how R10
+  unknown-enum-value preservation already worked for generated code), but
+  nothing in the type system prevented a hand-authored struct from
+  declaring an *exhaustive* enum instead. For that case, an out-of-range
+  wire value hit `@enumFromInt`'s safety panic (ReleaseSafe) — undefined
+  behavior in `ReleaseFast` — turning malformed/untrusted input into a
+  process crash. Added `wire.enumFromWire`, a comptime-branching helper: it
+  compiles down to the original unchecked `@enumFromInt` for the
+  non-exhaustive case (zero behavior/perf change for every currently
+  generated enum) and fails closed with `error.InvalidInput` for the
+  exhaustive case. Regression tests: out-of-range singular scalar enum
+  round-trips on a generated (non-exhaustive) type; a hand-authored
+  exhaustive enum field decode-errors instead of crashing. (PB-2026-007)
+
 ## [0.1.4] - 2026-06-12
 
 Output of an iterative defensive AppSec + full-audit pass (5 review
