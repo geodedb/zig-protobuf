@@ -1,11 +1,14 @@
 include:
   - component: gitlab.com/devnw/ci-catalog/zig-version-tag-check@v1.55.6
+    inputs:
+      tags: ["company", "linux", "x86"]
 
 default:
-  # Pin to self-hosted Linux so jobs don't fall through to GitLab SaaS minutes.
+  # The checksum-pinned Zig archive is x86_64; exclude ARM Linux runners.
   tags:
     - company
     - linux
+    - x86
   image: debian:bookworm-slim
   before_script:
     - apt-get update -qq
@@ -58,3 +61,13 @@ test:
   stage: test
   script:
     - zig build test --summary all
+
+# SONNY-4778: external hook tools must preserve the enclosing worktree.
+hook-env-regression:
+  stage: check
+  image: python:3.14-slim-bookworm
+  tags: [company, linux, x86]
+  before_script:
+    - apt-get update -qq && apt-get install -y --no-install-recommends git
+  script:
+    - python3 scripts/test_hook_env.py
