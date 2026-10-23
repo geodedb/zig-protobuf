@@ -1,5 +1,5 @@
 include:
-  - component: gitlab.com/devnw/ci-catalog/zig-version-tag-check@v1.57.1
+  - component: gitlab.com/devnw/ci-catalog/zig-version-tag-check@aad997d40e358eeef7ec943f761498341c37c724
     inputs:
       tags: ["company", "linux", "x86"]
 
